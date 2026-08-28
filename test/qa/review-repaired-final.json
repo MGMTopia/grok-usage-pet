@@ -1,0 +1,973 @@
+{
+  "ok": true,
+  "frames_root": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final",
+  "states": [
+    "idle",
+    "running-right",
+    "running-left",
+    "waving",
+    "jumping",
+    "failed",
+    "waiting",
+    "running",
+    "review"
+  ],
+  "errors": [],
+  "warnings": [],
+  "rows": [
+    {
+      "state": "idle",
+      "expected_frames": 6,
+      "actual_frames": 6,
+      "extraction_method": null,
+      "ok": true,
+      "errors": [],
+      "warnings": [],
+      "frames": [
+        {
+          "index": 0,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\idle\\00.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 9983,
+          "bbox": [
+            59,
+            5,
+            133,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        },
+        {
+          "index": 1,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\idle\\01.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 9803,
+          "bbox": [
+            59,
+            5,
+            132,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        },
+        {
+          "index": 2,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\idle\\02.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 9827,
+          "bbox": [
+            59,
+            5,
+            132,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        },
+        {
+          "index": 3,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\idle\\03.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 9813,
+          "bbox": [
+            59,
+            5,
+            132,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        },
+        {
+          "index": 4,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\idle\\04.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 9943,
+          "bbox": [
+            59,
+            5,
+            133,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        },
+        {
+          "index": 5,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\idle\\05.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 9833,
+          "bbox": [
+            59,
+            5,
+            132,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        }
+      ]
+    },
+    {
+      "state": "running-right",
+      "expected_frames": 8,
+      "actual_frames": 8,
+      "extraction_method": null,
+      "ok": true,
+      "errors": [],
+      "warnings": [],
+      "frames": [
+        {
+          "index": 0,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\running-right\\00.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 11936,
+          "bbox": [
+            52,
+            5,
+            145,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        },
+        {
+          "index": 1,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\running-right\\01.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 11654,
+          "bbox": [
+            32,
+            5,
+            151,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        },
+        {
+          "index": 2,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\running-right\\02.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 11125,
+          "bbox": [
+            56,
+            5,
+            142,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        },
+        {
+          "index": 3,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\running-right\\03.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 11576,
+          "bbox": [
+            49,
+            5,
+            146,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        },
+        {
+          "index": 4,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\running-right\\04.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 11389,
+          "bbox": [
+            51,
+            5,
+            141,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        },
+        {
+          "index": 5,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\running-right\\05.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 11703,
+          "bbox": [
+            36,
+            5,
+            152,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        },
+        {
+          "index": 6,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\running-right\\06.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 11070,
+          "bbox": [
+            52,
+            5,
+            139,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        },
+        {
+          "index": 7,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\running-right\\07.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 11001,
+          "bbox": [
+            44,
+            5,
+            145,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        }
+      ]
+    },
+    {
+      "state": "running-left",
+      "expected_frames": 8,
+      "actual_frames": 8,
+      "extraction_method": null,
+      "ok": true,
+      "errors": [],
+      "warnings": [],
+      "frames": [
+        {
+          "index": 0,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\running-left\\00.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 11936,
+          "bbox": [
+            46,
+            5,
+            139,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        },
+        {
+          "index": 1,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\running-left\\01.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 11626,
+          "bbox": [
+            46,
+            5,
+            160,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        },
+        {
+          "index": 2,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\running-left\\02.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 11125,
+          "bbox": [
+            49,
+            5,
+            135,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        },
+        {
+          "index": 3,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\running-left\\03.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 11634,
+          "bbox": [
+            38,
+            5,
+            143,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        },
+        {
+          "index": 4,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\running-left\\04.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 11389,
+          "bbox": [
+            50,
+            5,
+            140,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        },
+        {
+          "index": 5,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\running-left\\05.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 11772,
+          "bbox": [
+            42,
+            5,
+            156,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        },
+        {
+          "index": 6,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\running-left\\06.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 11070,
+          "bbox": [
+            53,
+            5,
+            140,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        },
+        {
+          "index": 7,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\running-left\\07.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 11001,
+          "bbox": [
+            47,
+            5,
+            148,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        }
+      ]
+    },
+    {
+      "state": "waving",
+      "expected_frames": 4,
+      "actual_frames": 4,
+      "extraction_method": null,
+      "ok": true,
+      "errors": [],
+      "warnings": [],
+      "frames": [
+        {
+          "index": 0,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\waving\\00.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 10235,
+          "bbox": [
+            57,
+            5,
+            134,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        },
+        {
+          "index": 1,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\waving\\01.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 10449,
+          "bbox": [
+            57,
+            5,
+            135,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        },
+        {
+          "index": 2,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\waving\\02.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 10389,
+          "bbox": [
+            57,
+            5,
+            134,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        },
+        {
+          "index": 3,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\waving\\03.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 10345,
+          "bbox": [
+            56,
+            5,
+            135,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        }
+      ]
+    },
+    {
+      "state": "jumping",
+      "expected_frames": 5,
+      "actual_frames": 5,
+      "extraction_method": null,
+      "ok": true,
+      "errors": [],
+      "warnings": [],
+      "frames": [
+        {
+          "index": 0,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\jumping\\00.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 11809,
+          "bbox": [
+            52,
+            5,
+            140,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        },
+        {
+          "index": 1,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\jumping\\01.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 10157,
+          "bbox": [
+            50,
+            5,
+            141,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        },
+        {
+          "index": 2,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\jumping\\02.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 12234,
+          "bbox": [
+            44,
+            5,
+            147,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        },
+        {
+          "index": 3,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\jumping\\03.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 10195,
+          "bbox": [
+            51,
+            5,
+            141,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        },
+        {
+          "index": 4,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\jumping\\04.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 11587,
+          "bbox": [
+            52,
+            5,
+            139,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        }
+      ]
+    },
+    {
+      "state": "failed",
+      "expected_frames": 8,
+      "actual_frames": 8,
+      "extraction_method": null,
+      "ok": true,
+      "errors": [],
+      "warnings": [],
+      "frames": [
+        {
+          "index": 0,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\failed\\00.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 10449,
+          "bbox": [
+            58,
+            5,
+            134,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        },
+        {
+          "index": 1,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\failed\\01.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 10809,
+          "bbox": [
+            53,
+            5,
+            139,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        },
+        {
+          "index": 2,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\failed\\02.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 17928,
+          "bbox": [
+            41,
+            5,
+            151,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        },
+        {
+          "index": 3,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\failed\\03.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 19188,
+          "bbox": [
+            32,
+            5,
+            159,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        },
+        {
+          "index": 4,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\failed\\04.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 23902,
+          "bbox": [
+            9,
+            5,
+            182,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        },
+        {
+          "index": 5,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\failed\\05.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 20505,
+          "bbox": [
+            11,
+            5,
+            180,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        },
+        {
+          "index": 6,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\failed\\06.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 15405,
+          "bbox": [
+            45,
+            5,
+            146,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        },
+        {
+          "index": 7,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\failed\\07.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 12570,
+          "bbox": [
+            47,
+            5,
+            144,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        }
+      ]
+    },
+    {
+      "state": "waiting",
+      "expected_frames": 6,
+      "actual_frames": 6,
+      "extraction_method": null,
+      "ok": true,
+      "errors": [],
+      "warnings": [],
+      "frames": [
+        {
+          "index": 0,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\waiting\\00.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 10047,
+          "bbox": [
+            57,
+            5,
+            135,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        },
+        {
+          "index": 1,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\waiting\\01.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 9875,
+          "bbox": [
+            59,
+            5,
+            132,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        },
+        {
+          "index": 2,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\waiting\\02.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 9434,
+          "bbox": [
+            62,
+            5,
+            129,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        },
+        {
+          "index": 3,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\waiting\\03.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 10074,
+          "bbox": [
+            56,
+            5,
+            136,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        },
+        {
+          "index": 4,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\waiting\\04.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 9737,
+          "bbox": [
+            61,
+            5,
+            130,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        },
+        {
+          "index": 5,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\waiting\\05.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 9897,
+          "bbox": [
+            57,
+            5,
+            134,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        }
+      ]
+    },
+    {
+      "state": "running",
+      "expected_frames": 6,
+      "actual_frames": 6,
+      "extraction_method": null,
+      "ok": true,
+      "errors": [],
+      "warnings": [],
+      "frames": [
+        {
+          "index": 0,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\running\\00.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 9854,
+          "bbox": [
+            61,
+            5,
+            131,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        },
+        {
+          "index": 1,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\running\\01.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 10502,
+          "bbox": [
+            61,
+            5,
+            131,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        },
+        {
+          "index": 2,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\running\\02.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 9594,
+          "bbox": [
+            60,
+            5,
+            132,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        },
+        {
+          "index": 3,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\running\\03.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 9950,
+          "bbox": [
+            61,
+            5,
+            130,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        },
+        {
+          "index": 4,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\running\\04.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 9724,
+          "bbox": [
+            61,
+            5,
+            130,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        },
+        {
+          "index": 5,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\running\\05.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 10688,
+          "bbox": [
+            55,
+            5,
+            136,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        }
+      ]
+    },
+    {
+      "state": "review",
+      "expected_frames": 6,
+      "actual_frames": 6,
+      "extraction_method": null,
+      "ok": true,
+      "errors": [],
+      "warnings": [],
+      "frames": [
+        {
+          "index": 0,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\review\\00.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 10004,
+          "bbox": [
+            58,
+            5,
+            133,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        },
+        {
+          "index": 1,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\review\\01.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 10079,
+          "bbox": [
+            54,
+            5,
+            138,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        },
+        {
+          "index": 2,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\review\\02.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 9975,
+          "bbox": [
+            58,
+            5,
+            133,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        },
+        {
+          "index": 3,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\review\\03.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 9406,
+          "bbox": [
+            61,
+            5,
+            130,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        },
+        {
+          "index": 4,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\review\\04.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 9644,
+          "bbox": [
+            60,
+            5,
+            131,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        },
+        {
+          "index": 5,
+          "file": "C:\\Users\\lirui\\Documents\\Codex\\2026-08-27\\zhi\\work\\repair-megumi-drag\\frames-repaired-final\\review\\05.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 9423,
+          "bbox": [
+            62,
+            5,
+            130,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 0
+        }
+      ]
+    }
+  ]
+}

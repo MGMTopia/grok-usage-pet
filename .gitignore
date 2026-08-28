@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.pyo
+dist/
+build/
+release/
+usage.json
+usage.txt
+pet_state.json
+*.log
+pet.lock
+pet.raise
+.DS_Store
+Thumbs.db

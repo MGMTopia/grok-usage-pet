@@ -1,0 +1,6 @@
+{
+  "visual_qa": "pass",
+  "qa_note": "All finalized rows preserve identity and palette with complete unclipped poses; deterministic validation reports zero chroma residue, fringe, or errors, and all motion rows match their app semantics without forbidden effects.",
+  "review_warnings": "Accepted blind intermediate-axis ambiguity warnings for diagonal look directions; labeled visual loop remains coherent.",
+  "repair_rows": []
+}

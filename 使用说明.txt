@@ -1,0 +1,51 @@
+Grok 额度宠物（可爱版）
+====================
+
+看 SuperGrok 周额度、Grok Bot 周额度，以及 Cursor 两个月额度池的透明桌宠。
+不是 xAI / Cursor 官方软件。账单接口以后可能会变。
+
+角色形象为《路人女主的养成方法》加藤惠的非官方同人像素，仅供个人把玩。
+请勿当作商业产品转售或暗示已获授权。
+
+即插即用
+--------
+1. 解压整个「GrokUsagePet-kawaii」文件夹，不要只拷贝 exe。
+2. 本机先登录一次（登哪个就显示哪条；不必一直开着软件）：
+   - SuperGrok：安装 Grok CLI 后运行  grok login
+   - Grok Bot 和 Cursor 额度：打开 Cursor 并登录
+3. Windows：双击 GrokUsagePetKawaii.exe
+4. 右键角色 → 设置：
+   - 开关要显示的额度条
+   - 开关「随 Grok Build 启动」「随 Cursor 启动」
+
+查额度
+------
+双击 exe 即可拉取，不需要当时正在运行 Grok Build 或 Cursor。
+大约每 60 秒刷新；右键「刷新额度」会立刻再抓。
+睡眠唤醒后 SuperGrok 会自行用本机 refresh token 续期，不必再开 Grok。
+若 SuperGrok 仍空白并提示登录过期，再运行一次  grok login。
+本程序只读取账单，不消耗对话 token。
+
+用法
+----
+- 平时只显示角色，窗口其余部分点得过去
+- 鼠标靠近角色：展开额度条
+- 鼠标停在某一条上：显示重置时间
+- 鼠标离开：额度条收起
+- 拖动角色移动位置
+- 双击：固定 / 取消固定额度条
+- 右键 → 退出宠物
+- 快捷方式 / 设置窗口图标为 Q 版加藤惠
+
+和上一版的关系
+--------------
+上一版（深色毛绒）压缩包 GrokUsagePet.zip 仍可单独使用。
+本包是可爱版：exe、计划任务、数据目录都分开，两套可以并存。
+可爱版数据在  %LOCALAPPDATA%\GrokUsagePetKawaii
+
+系统需求
+--------
+Windows 10/11：解压后双击 exe，不必装 Python。
+首次启动若被 SmartScreen 拦截，选「仍要运行」（未做代码签名）。
+macOS：本 zip 不能当 .app 用。请在 Mac 上用源码运行或执行 pack-mac.sh。
+Grok CLI 或 Cursor 至少登录过其中一个，对应额度才能显示。
