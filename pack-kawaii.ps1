@@ -10,6 +10,7 @@ python -m PyInstaller --noconfirm --clean --windowed --onedir `
   --name $name `
   --icon "assets\app.ico" `
   --add-data "assets;assets" `
+  --add-data "skins;skins" `
   --hidden-import fetch_usage `
   --hidden-import watch_apps `
   --hidden-import PIL._tkinter_finder `

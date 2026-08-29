@@ -1,0 +1,42 @@
+Grok 额度宠物 — GitHub 双线备份（本机混合目录）
+==============================================
+
+D:\ai 同时放着「加藤惠可爱版」和「原型毛绒版」的文件。
+这里不是 git 仓库，也没有 .git。不要在本目录做普通 git 操作。
+
+仓库（私有）
+----------
+可爱版 / 加藤惠
+  https://github.com/liruilong0805/grok-usage-pet-kawaii
+
+原型版 / 深色毛绒
+  https://github.com/liruilong0805/grok-usage-pet-prototype
+
+Git 账本在（不是项目副本，不能当程序运行）
+  C:\Users\lirui\.grok-usage-pet-git
+
+
+禁止（会把两条线揉在一起或覆盖本地文件）
+--------------------------------------
+- 不要在 D:\ai 执行：git init、git checkout、git switch、git restore、git pull、git reset
+- 不要 git add .
+- 不要把 C 盘那个文件夹拖进 Cursor 当工作区打开后乱跑脚本
+- 不要运行 bootstrap.ps1、commit-prototype.ps1（一次性初始化，日常禁用）
+
+
+日常备份（只推对应那条线）
+------------------------
+改加藤惠 / 精灵图 / pack-kawaii 之后：
+  powershell -File C:\Users\lirui\.grok-usage-pet-git\push-kawaii.ps1
+
+改原型毛绒图 / pack.ps1 之后：
+  powershell -File C:\Users\lirui\.grok-usage-pet-git\push-prototype.ps1
+
+脚本只会 git add 各自清单里的文件，不会改 D:\ai 的内容。
+不要提交：usage.json、usage.txt、pet_state.json、日志、dist、build。
+
+
+C 盘那个目录是什么
+----------------
+只是两套 .git 历史 + 推送脚本。删了不影响桌宠运行，只是不能再按上面方式推送。
+源码和图片仍在 D:\ai。

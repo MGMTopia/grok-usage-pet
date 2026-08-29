@@ -1,0 +1,33 @@
+{
+  "id": "megumi-kato",
+  "displayName": "加藤惠",
+  "description": "短棕发、白色贝雷帽与红色开衫的温柔像素女孩。布局与动作绑定的完整示例。",
+  "spritesheetPath": "spritesheet.webp",
+  "icon": "app.ico",
+  "iconPng": "app.png",
+  "atlas": {
+    "width": 1536,
+    "height": 2288,
+    "cellWidth": 192,
+    "cellHeight": 208,
+    "columns": 8,
+    "rows": 11
+  },
+  "animations": {
+    "idle": { "row": 0, "frames": 6, "ms": 260 },
+    "running-right": { "row": 1, "frames": 8, "ms": 110 },
+    "running-left": { "row": 2, "frames": 8, "ms": 110 },
+    "waving": { "row": 3, "frames": 4, "ms": 170 },
+    "jumping": { "row": 4, "frames": 5, "ms": 140 },
+    "failed": { "row": 5, "frames": 8, "ms": 200 },
+    "waiting": { "row": 6, "frames": 6, "ms": 200 },
+    "running": { "row": 7, "frames": 6, "ms": 140 },
+    "review": { "row": 8, "frames": 6, "ms": 200 }
+  },
+  "look": {
+    "rows": [9, 10],
+    "framesPerRow": 8,
+    "origin": "up",
+    "order": "clockwise"
+  }
+}

@@ -28,7 +28,10 @@ DATA_DIR = fu.data_dir()
 LOCK_FILE = DATA_DIR / "pet.lock"
 RAISE_FILE = DATA_DIR / "pet.raise"
 STATE_FILE = DATA_DIR / "pet_state.json"
-ASSETS = fu.resource_dir() / "assets"
+SKINS_DIR = fu.resource_dir() / "skins"
+LEGACY_ASSETS = fu.resource_dir() / "assets"
+DEFAULT_SKIN_ID = "megumi-kato"
+ASSETS = LEGACY_ASSETS
 HOOK_FILE = fu.grok_home() / "hooks" / "usage-pet.json"
 CURSOR_HOOK_FILE = Path.home() / ".cursor" / "hooks.json"
 BG = "#1b1b1f"
@@ -76,8 +79,9 @@ STYLES = {
     },
     "kawaii": {
         "row_h": 44,
-        "bubble_w": 264,
+        "bubble_w": 276,
         "bubble_top": 20,
+        "bubble_bottom": 14,
         "bubble_fill": "#fff7f2",
         "bubble_outline": "#e4b6ad",
         "bubble_shadow": "#efd2c8",
@@ -140,12 +144,120 @@ ANIM_MS = {
     "review": 200,
 }
 ONESHOT_ANIMS = {"jumping", "waving", "failed"}
+LOOK_ROWS = ((9, 8), (10, 8))
 
 try:
     from PIL import Image, ImageTk
 except ImportError:
     Image = None
     ImageTk = None
+
+
+def _read_json(path: Path) -> dict:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def skin_folder(skin_id: str) -> Path:
+    return SKINS_DIR / skin_id
+
+
+def load_skin_spec(skin_id: str) -> dict:
+    spec = _read_json(skin_folder(skin_id) / "pet.json")
+    if not spec and skin_id == DEFAULT_SKIN_ID:
+        spec = _read_json(LEGACY_ASSETS / "pet.json")
+    spec.setdefault("id", skin_id)
+    spec.setdefault("displayName", skin_id)
+    spec.setdefault("spritesheetPath", "spritesheet.webp")
+    spec.setdefault("icon", "app.ico")
+    spec.setdefault("iconPng", "app.png")
+    spec.setdefault(
+        "atlas",
+        {
+            "width": ATLAS_SIZE[0],
+            "height": ATLAS_SIZE[1],
+            "cellWidth": CELL_W,
+            "cellHeight": CELL_H,
+            "columns": 8,
+            "rows": 11,
+        },
+    )
+    if "animations" not in spec:
+        spec["animations"] = {
+            name: {"row": row, "frames": count, "ms": ANIM_MS.get(name, 200)}
+            for name, (row, count) in ANIMATIONS.items()
+        }
+    spec.setdefault("look", {"rows": [9, 10], "framesPerRow": 8, "origin": "up", "order": "clockwise"})
+    return spec
+
+
+def skin_atlas_path(skin_id: str) -> Path | None:
+    spec = load_skin_spec(skin_id)
+    name = str(spec.get("spritesheetPath") or "spritesheet.webp")
+    folders = [skin_folder(skin_id)]
+    if skin_id == DEFAULT_SKIN_ID:
+        folders.append(LEGACY_ASSETS)
+    for folder in folders:
+        path = folder / name
+        if path.exists():
+            return path
+    return None
+
+
+def skin_ready(skin_id: str) -> bool:
+    return skin_atlas_path(skin_id) is not None
+
+
+def list_skins() -> list[dict]:
+    ids: list[str] = []
+    if SKINS_DIR.exists():
+        ids = [p.name for p in sorted(SKINS_DIR.iterdir()) if p.is_dir() and (p / "pet.json").exists()]
+    if DEFAULT_SKIN_ID not in ids:
+        ids.insert(0, DEFAULT_SKIN_ID)
+    out: list[dict] = []
+    for skin_id in ids:
+        spec = load_skin_spec(skin_id)
+        spec["_ready"] = skin_ready(skin_id)
+        out.append(spec)
+    return out
+
+
+def activate_skin(skin_id: str) -> str:
+    global ASSETS, CELL_W, CELL_H, SPRITE_W, SPRITE_H, ATLAS_SIZE, ATLAS_NAME, ANIMATIONS, ANIM_MS, LOOK_ROWS
+    if not skin_ready(skin_id):
+        skin_id = DEFAULT_SKIN_ID
+    spec = load_skin_spec(skin_id)
+    atlas = spec.get("atlas") or {}
+    CELL_W = int(atlas.get("cellWidth") or 192)
+    CELL_H = int(atlas.get("cellHeight") or 208)
+    SPRITE_W = CELL_W
+    SPRITE_H = CELL_H
+    ATLAS_SIZE = (int(atlas.get("width") or 1536), int(atlas.get("height") or 2288))
+    ATLAS_NAME = str(spec.get("spritesheetPath") or "spritesheet.webp")
+    parsed: dict[str, tuple[int, int]] = {}
+    ms: dict[str, int] = {}
+    for name, cfg in (spec.get("animations") or {}).items():
+        if not isinstance(cfg, dict):
+            continue
+        parsed[name] = (int(cfg["row"]), int(cfg["frames"]))
+        if cfg.get("ms") is not None:
+            ms[name] = int(cfg["ms"])
+    if parsed:
+        ANIMATIONS = parsed
+    if ms:
+        ANIM_MS = {**ANIM_MS, **ms}
+    look = spec.get("look") or {}
+    rows = look.get("rows") or [9, 10]
+    fpr = int(look.get("framesPerRow") or 8)
+    LOOK_ROWS = tuple((int(row), fpr) for row in rows)
+    folder = skin_folder(skin_id)
+    if not (folder / ATLAS_NAME).exists() and skin_id == DEFAULT_SKIN_ID:
+        folder = LEGACY_ASSETS
+    ASSETS = folder
+    return str(spec.get("id") or skin_id)
 
 
 def style() -> dict:
@@ -332,7 +444,7 @@ def load_atlas_frames() -> dict[str, list]:
             clip.append(_to_photo(im))
         frames[name] = clip
     looks: list = []
-    for row, count in ((9, 8), (10, 8)):
+    for row, count in LOOK_ROWS:
         for column in range(count):
             box = (
                 column * CELL_W,
@@ -610,6 +722,7 @@ class UsagePet:
         self.snap: dict | None = None
         self.error: str | None = None
         self.pinned = bool(load_state().get("pinned", False))
+        self.skin_id = activate_skin(str(load_state().get("skin") or DEFAULT_SKIN_ID))
         self.enabled = load_enabled()
         self._settings: tk.Toplevel | None = None
         self._drag = None
@@ -749,7 +862,8 @@ class UsagePet:
     def _layout_metrics(self) -> tuple[int, int, int]:
         ui = style()
         rows = self.visible_rows() if self.bars_visible() else ()
-        bubble_h = (ui["bubble_top"] + len(rows) * ui["row_h"]) if rows else 0
+        extra = int(ui.get("bubble_bottom") or 0)
+        bubble_h = (ui["bubble_top"] + len(rows) * ui["row_h"] + extra) if rows else 0
         win_w = ui["bubble_w"] if rows else SPRITE_W
         win_h = bubble_h + SPRITE_H
         return win_w, win_h, bubble_h
@@ -916,11 +1030,12 @@ class UsagePet:
             "y": y,
             "enabled": dict(self.enabled),
             "pinned": self.pinned,
+            "skin": self.skin_id,
         }
         try:
             save_state(payload)
         except tk.TclError:
-            save_state({"enabled": dict(self.enabled), "pinned": self.pinned})
+            save_state({"enabled": dict(self.enabled), "pinned": self.pinned, "skin": self.skin_id})
 
     def _remainings(self) -> list[float]:
         if not self.snap:
@@ -1110,6 +1225,30 @@ class UsagePet:
                 anchor="w",
             ).pack(fill="x", padx=16, pady=2)
 
+        heading("形象")
+        self._skin_var = tk.StringVar(value=self.skin_id)
+        for spec in list_skins():
+            sid = str(spec.get("id") or "")
+            label = str(spec.get("displayName") or sid)
+            if not spec.get("_ready"):
+                label += "（待补素材）"
+            tk.Radiobutton(
+                win,
+                text=label,
+                value=sid,
+                variable=self._skin_var,
+                command=self._on_skin,
+                bg=ui["settings_bg"],
+                fg=ui["settings_text"],
+                selectcolor=ui["settings_select"],
+                activebackground=ui["settings_bg"],
+                activeforeground=ui["settings_active"],
+                highlightthickness=0,
+                font=ui["font_ui"],
+                anchor="w",
+            ).pack(fill="x", padx=16, pady=2)
+        hint("原创形象把图集放到 skins\\original\\spritesheet.webp 后再选。布局见该目录「素材说明.txt」。")
+
         heading("显示哪些额度条")
         self._enabled_vars = {}
         for key in BUBBLE_ROWS:
@@ -1132,8 +1271,35 @@ class UsagePet:
             return
         self._grok_start_var.set(grok_autostart_on())
         self._cursor_start_var.set(cursor_autostart_on())
+        if hasattr(self, "_skin_var"):
+            self._skin_var.set(self.skin_id)
         for key, var in self._enabled_vars.items():
             var.set(self.enabled.get(key, True))
+
+    def _on_skin(self) -> None:
+        want = str(self._skin_var.get() or "")
+        if not want or want == self.skin_id:
+            return
+        if not skin_ready(want):
+            self._skin_var.set(self.skin_id)
+            self._toast(
+                "还没有图集。\n请把 spritesheet.webp 放到：\n"
+                + str(skin_folder(want))
+                + "\n（说明见 素材说明.txt）"
+            )
+            return
+        self.skin_id = activate_skin(want)
+        self._oneshot = None
+        self._waved = False
+        self._failed_played = False
+        self._photos.pop("_app_icon", None)
+        self._load_sprites()
+        self._apply_app_icon(self.root)
+        if self._settings is not None and self._settings.winfo_exists():
+            self._apply_app_icon(self._settings)
+        self.persist()
+        self._apply_layout()
+        self.draw()
 
     def _on_toggle(self, key: str) -> None:
         var = self._enabled_vars.get(key)
@@ -1415,7 +1581,7 @@ class UsagePet:
         if not rows:
             return
         y0 = ui["bubble_top"]
-        y1 = y0 + len(rows) * ui["row_h"]
+        y1 = y0 + len(rows) * ui["row_h"] + int(ui.get("bubble_bottom") or 0)
         x0, x1 = 10, self._win_w - 10
         r = ui["radius"]
         cx = self._win_w // 2
@@ -1468,6 +1634,22 @@ class UsagePet:
             )
             self._bar(x0 + 16, top + 24, (x1 - x0) - 32, 12, remaining)
 
+    def _wrap_text(self, text: str, font: tkfont.Font, max_px: int) -> list[str]:
+        if max_px <= 8 or font.measure(text) <= max_px:
+            return [text]
+        lines: list[str] = []
+        current = ""
+        for ch in text:
+            trial = current + ch
+            if current and font.measure(trial) > max_px:
+                lines.append(current.rstrip())
+                current = "" if ch == " " else ch
+            else:
+                current = trial
+        if current:
+            lines.append(current.rstrip())
+        return lines or [text]
+
     def _reset_lines(self) -> list[str]:
         hover = self._hover
         pools = self._pools()
@@ -1502,21 +1684,34 @@ class UsagePet:
             return
         c = self.canvas
         mx, my = self._mouse
-        line_h = 16
+        ui = style()
         pad_x, pad_y = 10, 8
-        width = 196
+        width = max(160, min(240, self._win_w - 16))
+        inner = width - 2 * pad_x
+        font_b = tkfont.Font(font=ui["font_title"])
+        font_n = tkfont.Font(font=ui["font"])
+        line_h = max(font_n.metrics("linespace"), 16)
+        chunks: list[tuple[str, bool] | None] = []
         height = pad_y * 2
         for line in rows:
-            height += 6 if line == "" else line_h
+            if line == "":
+                chunks.append(None)
+                height += 6
+                continue
+            title = line in ("SuperGrok", "Grok Bot", "Cursor 模型", "其他模型")
+            font = font_b if title else font_n
+            wrapped = self._wrap_text(line, font, inner)
+            for i, piece in enumerate(wrapped):
+                chunks.append((piece, title and i == 0))
+                height += line_h
         tx = mx + 14
         ty = my + 16
         if tx + width > self._win_w - 6:
             tx = mx - width - 8
         if ty + height > self._win_h - 6:
             ty = my - height - 8
-        tx = max(6, tx)
-        ty = max(6, ty)
-        ui = style()
+        tx = max(6, min(tx, self._win_w - width - 6))
+        ty = max(6, min(ty, self._win_h - height - 6))
         if UI_THEME == "kawaii":
             canvas_round_rect(
                 c, tx, ty, tx + width, ty + height, 12,
@@ -1533,18 +1728,18 @@ class UsagePet:
                 width=1,
             )
         y = ty + pad_y + 2
-        for line in rows:
-            if line == "":
+        for item in chunks:
+            if item is None:
                 y += 6
                 continue
-            title = line in ("SuperGrok", "Grok Bot", "Cursor 模型", "其他模型")
+            piece, title = item
             c.create_text(
                 tx + pad_x,
                 y,
-                text=line,
+                text=piece,
                 fill=ui["tip_title"] if title else ui["tip_text"],
                 font=ui["font_title"] if title else ui["font"],
-                anchor="w",
+                anchor="nw",
             )
             y += line_h
 
