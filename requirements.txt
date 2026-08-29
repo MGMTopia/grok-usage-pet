@@ -1,0 +1,2 @@
+# Runtime dependency used for WebP sprite loading and Tk image conversion.
+Pillow==11.0.0

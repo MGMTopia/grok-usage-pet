@@ -6,10 +6,11 @@ D:\ai 同时放着「加藤惠可爱版」和「原型毛绒版」的文件。
 
 仓库（私有）
 ----------
-可爱版 / 加藤惠
+可爱版 / 加藤惠  v0.2.0
   https://github.com/liruilong0805/grok-usage-pet-kawaii
+  版本以 VERSION、app_version.py、CHANGELOG.md 为准。
 
-原型版 / 深色毛绒
+原型版 / 深色毛绒  （独立线，不要用可爱版覆盖）
   https://github.com/liruilong0805/grok-usage-pet-prototype
 
 Git 账本在（不是项目副本，不能当程序运行）

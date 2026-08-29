@@ -6,12 +6,12 @@ from __future__ import annotations
 import json
 import math
 import os
+import queue
 import shlex
 import subprocess
 import sys
 import threading
 import tkinter as tk
-from datetime import datetime
 from pathlib import Path
 from tkinter import Menu
 from tkinter import font as tkfont
@@ -22,8 +22,11 @@ else:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import fetch_usage as fu
+import cursor_hooks
+from app_version import APP_VERSION
+from pet_view_model import build_pools, format_reset
+from skin_catalog import SkinCatalog
 
-APP_DIR = fu.install_dir()
 DATA_DIR = fu.data_dir()
 LOCK_FILE = DATA_DIR / "pet.lock"
 RAISE_FILE = DATA_DIR / "pet.raise"
@@ -34,6 +37,7 @@ DEFAULT_SKIN_ID = "megumi-kato"
 ASSETS = LEGACY_ASSETS
 HOOK_FILE = fu.grok_home() / "hooks" / "usage-pet.json"
 CURSOR_HOOK_FILE = Path.home() / ".cursor" / "hooks.json"
+CURSOR_HOOK_MARKER = cursor_hooks.MARKER
 BG = "#1b1b1f"
 CHROMA = "#ff00ff"
 CHROMA_RGB = (255, 0, 255)
@@ -153,76 +157,33 @@ except ImportError:
     ImageTk = None
 
 
-def _read_json(path: Path) -> dict:
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    return data if isinstance(data, dict) else {}
+SKIN_CATALOG = SkinCatalog(
+    SKINS_DIR,
+    LEGACY_ASSETS,
+    DEFAULT_SKIN_ID,
+    ANIMATIONS,
+    ANIM_MS,
+)
 
 
 def skin_folder(skin_id: str) -> Path:
-    return SKINS_DIR / skin_id
+    return SKIN_CATALOG.folder(skin_id)
 
 
 def load_skin_spec(skin_id: str) -> dict:
-    spec = _read_json(skin_folder(skin_id) / "pet.json")
-    if not spec and skin_id == DEFAULT_SKIN_ID:
-        spec = _read_json(LEGACY_ASSETS / "pet.json")
-    spec.setdefault("id", skin_id)
-    spec.setdefault("displayName", skin_id)
-    spec.setdefault("spritesheetPath", "spritesheet.webp")
-    spec.setdefault("icon", "app.ico")
-    spec.setdefault("iconPng", "app.png")
-    spec.setdefault(
-        "atlas",
-        {
-            "width": ATLAS_SIZE[0],
-            "height": ATLAS_SIZE[1],
-            "cellWidth": CELL_W,
-            "cellHeight": CELL_H,
-            "columns": 8,
-            "rows": 11,
-        },
-    )
-    if "animations" not in spec:
-        spec["animations"] = {
-            name: {"row": row, "frames": count, "ms": ANIM_MS.get(name, 200)}
-            for name, (row, count) in ANIMATIONS.items()
-        }
-    spec.setdefault("look", {"rows": [9, 10], "framesPerRow": 8, "origin": "up", "order": "clockwise"})
-    return spec
+    return SKIN_CATALOG.load_spec(skin_id)
 
 
 def skin_atlas_path(skin_id: str) -> Path | None:
-    spec = load_skin_spec(skin_id)
-    name = str(spec.get("spritesheetPath") or "spritesheet.webp")
-    folders = [skin_folder(skin_id)]
-    if skin_id == DEFAULT_SKIN_ID:
-        folders.append(LEGACY_ASSETS)
-    for folder in folders:
-        path = folder / name
-        if path.exists():
-            return path
-    return None
+    return SKIN_CATALOG.atlas_path(skin_id)
 
 
 def skin_ready(skin_id: str) -> bool:
-    return skin_atlas_path(skin_id) is not None
+    return SKIN_CATALOG.ready(skin_id)
 
 
 def list_skins() -> list[dict]:
-    ids: list[str] = []
-    if SKINS_DIR.exists():
-        ids = [p.name for p in sorted(SKINS_DIR.iterdir()) if p.is_dir() and (p / "pet.json").exists()]
-    if DEFAULT_SKIN_ID not in ids:
-        ids.insert(0, DEFAULT_SKIN_ID)
-    out: list[dict] = []
-    for skin_id in ids:
-        spec = load_skin_spec(skin_id)
-        spec["_ready"] = skin_ready(skin_id)
-        out.append(spec)
-    return out
+    return SKIN_CATALOG.list_specs()
 
 
 def activate_skin(skin_id: str) -> str:
@@ -368,28 +329,6 @@ def load_enabled() -> dict[str, bool]:
         if key in raw:
             enabled[key] = bool(raw[key])
     return enabled
-
-
-def format_reset(iso: str | None) -> tuple[str, str]:
-    if not iso:
-        return "到期时间未知", ""
-    try:
-        dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
-    except ValueError:
-        return str(iso), ""
-    local = dt.astimezone()
-    now = datetime.now().astimezone()
-    secs = max(0, int((local - now).total_seconds()))
-    days, rem = divmod(secs, 86400)
-    hours, rem = divmod(rem, 3600)
-    mins = rem // 60
-    if days:
-        left = f"还剩 {days} 天 {hours} 小时"
-    elif hours:
-        left = f"还剩 {hours} 小时 {mins} 分"
-    else:
-        left = f"还剩 {mins} 分钟"
-    return f"重置 {local.strftime('%m月%d日 %H:%M')}", left
 
 
 def _to_photo(im):
@@ -570,32 +509,11 @@ def cursor_hook_command() -> str:
 
 
 def _is_our_cursor_hook(entry: object) -> bool:
-    if not isinstance(entry, dict):
-        return False
-    cmd = str(entry.get("command") or "")
-    return any(mark in cmd for mark in ("GrokUsagePet", "start_pet", "pet.py"))
+    return cursor_hooks.is_managed_entry(entry, cursor_hook_command())
 
 
 def install_cursor_hook() -> Path:
-    CURSOR_HOOK_FILE.parent.mkdir(parents=True, exist_ok=True)
-    payload: dict = {"version": 1, "hooks": {}}
-    if CURSOR_HOOK_FILE.exists():
-        try:
-            loaded = json.loads(CURSOR_HOOK_FILE.read_text(encoding="utf-8"))
-            if isinstance(loaded, dict):
-                payload.update(loaded)
-        except json.JSONDecodeError:
-            pass
-    hooks = payload.setdefault("hooks", {})
-    if not isinstance(hooks, dict):
-        hooks = {}
-        payload["hooks"] = hooks
-    session = [h for h in (hooks.get("sessionStart") or []) if not _is_our_cursor_hook(h)]
-    session.append({"command": cursor_hook_command(), "timeout": 15})
-    hooks["sessionStart"] = session
-    payload["version"] = payload.get("version") or 1
-    CURSOR_HOOK_FILE.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    return CURSOR_HOOK_FILE
+    return cursor_hooks.install(CURSOR_HOOK_FILE, cursor_hook_command())
 
 
 def sync_watcher() -> None:
@@ -629,38 +547,11 @@ def grok_autostart_on() -> bool:
 
 
 def cursor_autostart_on() -> bool:
-    if not CURSOR_HOOK_FILE.exists():
-        return False
-    try:
-        payload = json.loads(CURSOR_HOOK_FILE.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return False
-    hooks = payload.get("hooks") if isinstance(payload, dict) else None
-    if not isinstance(hooks, dict):
-        return False
-    return any(_is_our_cursor_hook(h) for h in (hooks.get("sessionStart") or []))
+    return cursor_hooks.is_enabled(CURSOR_HOOK_FILE, cursor_hook_command())
 
 
 def uninstall_cursor_hook() -> None:
-    if not CURSOR_HOOK_FILE.exists():
-        return
-    try:
-        payload = json.loads(CURSOR_HOOK_FILE.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return
-    hooks = payload.get("hooks")
-    if not isinstance(hooks, dict):
-        return
-    session = [h for h in (hooks.get("sessionStart") or []) if not _is_our_cursor_hook(h)]
-    if session:
-        hooks["sessionStart"] = session
-    else:
-        hooks.pop("sessionStart", None)
-    if hooks:
-        payload["hooks"] = hooks
-        CURSOR_HOOK_FILE.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    else:
-        CURSOR_HOOK_FILE.unlink()
+    cursor_hooks.uninstall(CURSOR_HOOK_FILE, cursor_hook_command())
 
 
 def desktop_dir() -> Path:
@@ -718,10 +609,11 @@ def create_desktop_shortcut() -> Path:
 
 
 class UsagePet:
-    def __init__(self) -> None:
-        self.snap: dict | None = None
+    def __init__(self, *, preview_snapshot: dict | None = None, auto_close_ms: int | None = None) -> None:
+        self._preview_mode = preview_snapshot is not None
+        self.snap: dict | None = preview_snapshot
         self.error: str | None = None
-        self.pinned = bool(load_state().get("pinned", False))
+        self.pinned = True if self._preview_mode else bool(load_state().get("pinned", False))
         self.skin_id = activate_skin(str(load_state().get("skin") or DEFAULT_SKIN_ID))
         self.enabled = load_enabled()
         self._settings: tk.Toplevel | None = None
@@ -730,6 +622,8 @@ class UsagePet:
         self._last_drag_x = 0
         self._tick = 0
         self._busy = False
+        self._closing = False
+        self._fetch_results: queue.Queue[tuple[dict | None, str | None]] = queue.Queue()
         self._photos: dict[str, object] = {}
         self._anims: dict[str, list] = {}
         self._looks: list = []
@@ -737,7 +631,7 @@ class UsagePet:
         self._frame = 0
         self._frame_acc = 0
         self._oneshot: str | None = None
-        self._waved = False
+        self._waved = self._preview_mode
         self._failed_played = False
         self._hover: str | None = None
         self._hover_open = False
@@ -754,7 +648,7 @@ class UsagePet:
         self.root = tk.Tk()
         print("Tk created", flush=True)
         pick_ui_fonts(self.root)
-        self.root.title("Grok 额度")
+        self.root.title(f"Grok 额度 v{APP_VERSION}")
         self._apply_app_icon(self.root)
         self.root.withdraw()
         self.root.overrideredirect(True)
@@ -807,7 +701,12 @@ class UsagePet:
         self._apply_chrome()
         self.root.deiconify()
         self.root.geometry(self._geom)
-        self.refresh_now()
+        self.root.after(100, self._poll_fetch_results)
+        if self._preview_mode:
+            if auto_close_ms is not None:
+                self.root.after(max(500, auto_close_ms), self.quit)
+        else:
+            self.refresh_now()
         self.root.after(TICK_MS, self.animate)
         self.root.after(400, self.watch_raise)
         self.root.after(200, self._force_front)
@@ -1180,91 +1079,165 @@ class UsagePet:
             self._settings.lift()
             self._settings.focus_force()
             return
+        ui = style()
         win = tk.Toplevel(self.root)
         self._settings = win
-        ui = style()
-        win.title("设置")
+        win.title(f"设置 · v{APP_VERSION}")
         self._apply_app_icon(win)
         win.attributes("-topmost", True)
         win.resizable(False, False)
-        win.configure(bg=ui["settings_bg"])
+        bg = ui["settings_bg"]
+        card_bg = ui.get("inner", "#ffffff")
+        win.configure(bg=bg)
+        wrap = 300
+        self._settings_paints: list = []
+        self._skin_chips: dict[str, tk.Frame] = {}
+        self._skin_var = tk.StringVar(value=self.skin_id)
 
-        def heading(text: str, pady=(14, 8)) -> None:
+        shell = tk.Frame(win, bg=bg)
+        shell.pack(fill="both", expand=True, padx=16, pady=(8, 16))
+
+        def heading(text: str) -> None:
             tk.Label(
-                win,
+                shell,
                 text=text,
-                bg=ui["settings_bg"],
+                bg=bg,
                 fg=ui["settings_fg"],
                 font=ui["font_title"],
-            ).pack(anchor="w", padx=16, pady=pady)
+                anchor="w",
+            ).pack(fill="x", pady=(12, 6))
 
-        def hint(text: str, pady=(2, 8)) -> None:
+        def hint(text: str) -> None:
             tk.Label(
-                win,
+                shell,
                 text=text,
-                bg=ui["settings_bg"],
+                bg=bg,
                 fg=ui["settings_muted"],
                 font=ui["font"],
-                wraplength=260,
+                wraplength=wrap,
                 justify="left",
-            ).pack(anchor="w", padx=16, pady=pady)
+                anchor="w",
+            ).pack(fill="x", pady=(4, 0))
 
-        def checkbox(text: str, var: tk.BooleanVar, command) -> None:
-            tk.Checkbutton(
-                win,
+        def card() -> tk.Frame:
+            wrap_fr = tk.Frame(
+                shell,
+                bg=card_bg,
+                highlightbackground=ui["bubble_outline"],
+                highlightcolor=ui["bubble_outline"],
+                highlightthickness=1,
+                bd=0,
+            )
+            wrap_fr.pack(fill="x")
+            inner = tk.Frame(wrap_fr, bg=card_bg)
+            inner.pack(fill="x", padx=12, pady=8)
+            return inner
+
+        def add_switch(parent: tk.Frame, text: str, var: tk.BooleanVar, command) -> None:
+            row = tk.Frame(parent, bg=card_bg)
+            row.pack(fill="x", pady=5)
+            tk.Label(
+                row,
                 text=text,
-                variable=var,
-                command=command,
-                bg=ui["settings_bg"],
+                bg=card_bg,
                 fg=ui["settings_text"],
-                selectcolor=ui["settings_select"],
-                activebackground=ui["settings_bg"],
-                activeforeground=ui["settings_active"],
-                highlightthickness=0,
                 font=ui["font_ui"],
                 anchor="w",
-            ).pack(fill="x", padx=16, pady=2)
+            ).pack(side="left", fill="x", expand=True)
+            cv = tk.Canvas(row, width=46, height=26, bg=card_bg, highlightthickness=0, bd=0)
+            cv.pack(side="right")
+
+            def paint(_var=var, _cv=cv) -> None:
+                _cv.delete("all")
+                on = bool(_var.get())
+                fill = ui.get("accent", "#c94b4b") if on else ui["bar_track"]
+                canvas_round_rect(_cv, 2, 4, 44, 22, 9, fill=fill, outline="")
+                knob = 33 if on else 13
+                _cv.create_oval(knob - 8, 5, knob + 8, 21, fill="#ffffff", outline="")
+
+            def click(_event=None, _var=var, _cmd=command) -> None:
+                _var.set(not bool(_var.get()))
+                paint()
+                _cmd()
+
+            cv.bind("<Button-1>", click)
+            self._settings_paints.append(paint)
+            paint()
 
         heading("形象")
-        self._skin_var = tk.StringVar(value=self.skin_id)
-        for spec in list_skins():
+        chips = tk.Frame(shell, bg=bg)
+        chips.pack(fill="x")
+        skins = list_skins()
+        for i, spec in enumerate(skins):
             sid = str(spec.get("id") or "")
-            label = str(spec.get("displayName") or sid)
-            if not spec.get("_ready"):
-                label += "（待补素材）"
-            tk.Radiobutton(
-                win,
-                text=label,
-                value=sid,
-                variable=self._skin_var,
-                command=self._on_skin,
-                bg=ui["settings_bg"],
-                fg=ui["settings_text"],
-                selectcolor=ui["settings_select"],
-                activebackground=ui["settings_bg"],
-                activeforeground=ui["settings_active"],
-                highlightthickness=0,
-                font=ui["font_ui"],
-                anchor="w",
-            ).pack(fill="x", padx=16, pady=2)
-        hint("原创形象把图集放到 skins\\original\\spritesheet.webp 后再选。布局见该目录「素材说明.txt」。")
+            ready = bool(spec.get("_ready"))
+            chip = tk.Frame(chips, bg=card_bg, highlightthickness=2, bd=0)
+            chip.pack(side="left", fill="x", expand=True, padx=(0, 8) if i < len(skins) - 1 else 0)
+            name = tk.Label(
+                chip,
+                text=str(spec.get("displayName") or sid),
+                bg=card_bg,
+                fg=ui["settings_fg"],
+                font=ui["font_title"],
+            )
+            name.pack(anchor="w", padx=10, pady=(8, 0))
+            sub = tk.Label(
+                chip,
+                text="已就绪" if ready else "待补素材",
+                bg=card_bg,
+                fg=ui["accent"] if ready else ui["settings_muted"],
+                font=ui["font"],
+            )
+            sub.pack(anchor="w", padx=10, pady=(0, 8))
 
-        heading("显示哪些额度条")
+            def bind(widget, skin_id=sid, ok=ready) -> None:
+                widget.bind("<Button-1>", lambda _e, s=skin_id, r=ok: self._pick_skin(s, r))
+
+            bind(chip)
+            bind(name)
+            bind(sub)
+            self._skin_chips[sid] = chip
+        self._paint_skin_chips()
+        hint("原创图集放到 skins\\original\\spritesheet.webp 后再选。格子说明在该目录。")
+
+        heading("额度条")
+        inner = card()
         self._enabled_vars = {}
         for key in BUBBLE_ROWS:
             var = tk.BooleanVar(value=self.enabled.get(key, True))
             self._enabled_vars[key] = var
-            checkbox(ROW_LABELS[key], var, lambda k=key: self._on_toggle(k))
+            add_switch(inner, ROW_LABELS[key], var, lambda k=key: self._on_toggle(k))
         hint("关掉的条目不再显示，也不参与表情判断。")
 
-        heading("随软件启动", pady=(6, 8))
+        heading("随软件启动")
+        inner = card()
         self._grok_start_var = tk.BooleanVar(value=grok_autostart_on())
         self._cursor_start_var = tk.BooleanVar(value=cursor_autostart_on())
-        checkbox("随 Grok Build 启动", self._grok_start_var, self._on_toggle_grok_start)
-        checkbox("随 Cursor 启动", self._cursor_start_var, self._on_toggle_cursor_start)
-        hint("打开 Grok 或 Cursor 后几秒内出现。登录 Windows 后会在后台等待这两个软件。", pady=(4, 14))
+        add_switch(inner, "随 Grok Build 启动", self._grok_start_var, self._on_toggle_grok_start)
+        add_switch(inner, "随 Cursor 启动", self._cursor_start_var, self._on_toggle_cursor_start)
+        hint("打开 Grok 或 Cursor 后几秒内出现。登录 Windows 后会在后台等待这两个软件。")
 
         win.protocol("WM_DELETE_WINDOW", win.destroy)
+
+    def _paint_skin_chips(self) -> None:
+        ui = style()
+        card_bg = ui.get("inner", "#ffffff")
+        for sid, chip in (getattr(self, "_skin_chips", {}) or {}).items():
+            selected = sid == self.skin_id
+            edge = ui.get("accent", "#c94b4b") if selected else ui["bubble_outline"]
+            chip.configure(highlightbackground=edge, highlightcolor=edge, bg=card_bg)
+            for child in chip.winfo_children():
+                if isinstance(child, tk.Label):
+                    child.configure(bg=card_bg)
+
+    def _pick_skin(self, skin_id: str, ready: bool) -> None:
+        self._skin_var.set(skin_id)
+        if not ready:
+            self._on_skin()
+            self._paint_skin_chips()
+            return
+        self._on_skin()
+        self._paint_skin_chips()
 
     def _sync_setting_vars(self) -> None:
         if not hasattr(self, "_grok_start_var"):
@@ -1275,6 +1248,9 @@ class UsagePet:
             self._skin_var.set(self.skin_id)
         for key, var in self._enabled_vars.items():
             var.set(self.enabled.get(key, True))
+        for paint in getattr(self, "_settings_paints", []):
+            paint()
+        self._paint_skin_chips()
 
     def _on_skin(self) -> None:
         want = str(self._skin_var.get() or "")
@@ -1300,6 +1276,7 @@ class UsagePet:
         self.persist()
         self._apply_layout()
         self.draw()
+        self._paint_skin_chips()
 
     def _on_toggle(self, key: str) -> None:
         var = self._enabled_vars.get(key)
@@ -1339,7 +1316,9 @@ class UsagePet:
         sync_watcher()
 
     def quit(self) -> None:
-        self.persist()
+        self._closing = True
+        if not self._preview_mode:
+            self.persist()
         try:
             if LOCK_FILE.exists() and LOCK_FILE.read_text(encoding="utf-8").strip() == str(os.getpid()):
                 LOCK_FILE.unlink()
@@ -1364,9 +1343,36 @@ class UsagePet:
             self._toast(f"创建失败：{exc}")
 
     def _toast(self, text: str) -> None:
-        from tkinter import messagebox
-
-        messagebox.showinfo("Grok 额度", text)
+        ui = style()
+        dlg = tk.Toplevel(self.root)
+        dlg.title("提示")
+        dlg.attributes("-topmost", True)
+        dlg.resizable(False, False)
+        dlg.configure(bg=ui["settings_bg"])
+        self._apply_app_icon(dlg)
+        tk.Label(
+            dlg,
+            text=text,
+            bg=ui["settings_bg"],
+            fg=ui["settings_text"],
+            font=ui["font_ui"],
+            wraplength=280,
+            justify="left",
+        ).pack(padx=18, pady=(16, 10))
+        btn = tk.Label(
+            dlg,
+            text="好",
+            bg=ui.get("accent", "#c94b4b"),
+            fg="#ffffff",
+            font=ui["font_title"],
+            padx=20,
+            pady=6,
+        )
+        btn.pack(pady=(0, 16))
+        btn.bind("<Button-1>", lambda _e: dlg.destroy())
+        dlg.bind("<Return>", lambda _e: dlg.destroy())
+        dlg.transient(self.root)
+        dlg.grab_set()
 
     def open_data_dir(self) -> None:
         DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -1392,7 +1398,7 @@ class UsagePet:
         self.root.after(200, self._force_front)
 
     def refresh_now(self) -> None:
-        if self._busy:
+        if self._busy or self._closing:
             return
         self._busy = True
         threading.Thread(target=self._fetch, daemon=True).start()
@@ -1407,23 +1413,35 @@ class UsagePet:
                 err = "；".join(f"{k}: {v}" for k, v in snap["errors"].items())
         except (Exception, SystemExit) as exc:
             err = str(exc)
-        def apply() -> None:
-            first = self.snap is None
-            self._busy = False
-            if snap is not None:
-                self.snap = snap
-                self.error = err
-            else:
-                self.error = err
-            if first and snap is not None and not self._waved:
-                vals = self._remainings()
-                worst = min(vals) if vals else None
-                if worst is None or worst >= 20:
-                    self._play_oneshot("waving")
-                self._waved = True
-            self._apply_layout()
-            self.draw()
-        self.root.after(0, apply)
+        self._fetch_results.put((snap, err))
+
+    def _poll_fetch_results(self) -> None:
+        if self._closing:
+            return
+        try:
+            while True:
+                snap, err = self._fetch_results.get_nowait()
+                self._apply_fetch_result(snap, err)
+        except queue.Empty:
+            pass
+        self.root.after(100, self._poll_fetch_results)
+
+    def _apply_fetch_result(self, snap: dict | None, err: str | None) -> None:
+        first = self.snap is None
+        self._busy = False
+        if snap is not None and fu.snapshot_is_usable(snap):
+            self.snap = snap
+            self.error = err
+        else:
+            self.error = err
+        if first and snap is not None and fu.snapshot_is_usable(snap) and not self._waved:
+            vals = self._remainings()
+            worst = min(vals) if vals else None
+            if worst is None or worst >= 20:
+                self._play_oneshot("waving")
+            self._waved = True
+        self._apply_layout()
+        self.draw()
 
     def animate(self) -> None:
         self._tick += 1
@@ -1479,52 +1497,7 @@ class UsagePet:
             self._draw_reset_tip()
 
     def _pools(self) -> dict:
-        snap = self.snap or {}
-        cur = snap.get("cursor") or {}
-        monthly = cur.get("cursor_monthly") or {}
-        return {
-            "sg": {
-                "title": "SuperGrok",
-                "remaining": snap.get("remaining_percent"),
-                "reset": (snap.get("period") or {}).get("end"),
-                "extra": ["Chat / Build / Imagine 共用周池"],
-            },
-            "bot": {
-                "title": "Grok Bot",
-                "remaining": (cur.get("grok_bot") or {}).get("remaining_percent"),
-                "reset": (cur.get("grok_bot") or {}).get("resets_at"),
-                "extra": ["Cursor 账号上的独立周额度"],
-            },
-            "cm": {
-                "title": "Cursor 模型",
-                "remaining": (monthly.get("cursor_models") or {}).get("remaining_percent"),
-                "reset": monthly.get("billing_cycle_end"),
-                "extra": self._cursor_extra(monthly, "cursor_models"),
-            },
-            "om": {
-                "title": "其他模型",
-                "remaining": (monthly.get("other_models") or {}).get("remaining_percent"),
-                "reset": monthly.get("billing_cycle_end"),
-                "extra": self._cursor_extra(monthly, "other_models"),
-            },
-        }
-
-    def _cursor_extra(self, monthly: dict, key: str) -> list[str]:
-        pool = monthly.get(key) or {}
-        lines = [pool.get("hint") or ""]
-        limit = monthly.get("included_limit_cents")
-        used = monthly.get("included_used_cents")
-        if key == "om" and limit is not None:
-            used_v = (used or 0) / 100
-            limit_v = limit / 100
-            lines.append(f"套餐内 ${used_v:.2f} / ${limit_v:.2f}")
-        lines.append("On-Demand 开" if monthly.get("on_demand_allowed") else "On-Demand 关")
-        if monthly.get("display_message") and key == "om":
-            lines.append(str(monthly["display_message"]))
-        hint_msg = pool.get("display_message")
-        if hint_msg:
-            lines.append(str(hint_msg))
-        return [line for line in lines if line]
+        return build_pools(self.snap)
 
     def _draw_bubble(self) -> None:
         if UI_THEME == "classic":
@@ -1809,8 +1782,60 @@ class UsagePet:
         print("mainloop exit", flush=True)
 
 
+def smoke_test() -> None:
+    if Image is None:
+        raise RuntimeError("Pillow is not available")
+    default_spec = load_skin_spec(DEFAULT_SKIN_ID)
+    atlas_path = skin_atlas_path(DEFAULT_SKIN_ID)
+    if atlas_path is None:
+        raise RuntimeError("default spritesheet is missing")
+    atlas = default_spec.get("atlas") or {}
+    expected = (int(atlas.get("width") or 0), int(atlas.get("height") or 0))
+    with Image.open(atlas_path) as image:
+        if image.size != expected:
+            raise RuntimeError(f"spritesheet size {image.size} does not match {expected}")
+        image.verify()
+    if not (ASSETS / "app.ico").exists() or not (ASSETS / "app.png").exists():
+        raise RuntimeError("application icons are missing")
+    print(f"smoke test OK: v{APP_VERSION} {atlas_path} {expected}")
+
+
+def visual_smoke_snapshot() -> dict:
+    return {
+        "status": fu.STATUS_COMPLETE,
+        "plan": "Visual Smoke",
+        "period": {"end": "2030-01-01T00:00:00Z"},
+        "used_percent": 28.0,
+        "remaining_percent": 72.0,
+        "products_used_percent": {"GrokChat": 28.0},
+        "cursor": {
+            "source_status": fu.SOURCE_OK,
+            "grok_bot": {
+                "used_percent": 39.0,
+                "remaining_percent": 61.0,
+                "resets_at": "2030-01-02T00:00:00Z",
+            },
+            "cursor_monthly": {
+                "billing_cycle_end": "2030-01-31T00:00:00Z",
+                "included_limit_cents": 2000,
+                "included_used_cents": 650,
+                "on_demand_allowed": False,
+                "cursor_models": {"remaining_percent": 48.0, "hint": "Visual smoke test"},
+                "other_models": {"remaining_percent": 84.0, "hint": "Visual smoke test"},
+            },
+        },
+        "errors": None,
+    }
+
+
 def main() -> None:
     args = sys.argv[1:]
+    if "--smoke-test" in args:
+        smoke_test()
+        return
+    if "--visual-smoke-test" in args:
+        UsagePet(preview_snapshot=visual_smoke_snapshot(), auto_close_ms=3000).run()
+        return
     if "--hook" in args:
         launch_detached()
         return
@@ -1831,7 +1856,7 @@ def main() -> None:
         snap = fu.snapshot()
         fu.write_snapshot(snap)
         print(fu.one_line(snap))
-        return
+        raise SystemExit(fu.exit_code_for_snapshot(snap))
 
     log = DATA_DIR / "pet.log"
     try:

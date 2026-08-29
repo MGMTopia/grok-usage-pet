@@ -19,13 +19,31 @@ import argparse
 import json
 import os
 import sqlite3
+import stat
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+from snapshot_store import write_snapshot_files
+from usage_model import (
+    SOURCE_ERROR,
+    SOURCE_OK,
+    SOURCE_UNAVAILABLE,
+    STATUS_COMPLETE,
+    STATUS_FAILED,
+    STATUS_PARTIAL,
+    as_float,
+    exit_code_for_snapshot,
+    ms_to_iso,
+    one_line,
+    seconds_until,
+    snapshot_is_usable,
+)
 
 APP_NAME = "GrokUsagePet"
 BILLING_URL = "https://cli-chat-proxy.grok.com/v1/billing?format=credits"
@@ -98,14 +116,6 @@ def find_cursor_db() -> Path | None:
     return None
 
 
-APP_DIR = install_dir()
-GROK_HOME = grok_home()
-AUTH_FILE = grok_auth_file()
-OUT_JSON = data_dir() / "usage.json"
-OUT_TXT = data_dir() / "usage.txt"
-CURSOR_STATE_DB = find_cursor_db() or Path()
-
-
 def _parse_expires(iso: str | None) -> datetime | None:
     if not iso:
         return None
@@ -135,9 +145,35 @@ def _oidc_token_url(issuer: str) -> str:
 
 
 def _write_auth(path: Path, data: dict) -> None:
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    tmp.replace(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    original_mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o600
+    # Auth files must never become group/world-readable after token refresh.
+    secure_mode = original_mode & 0o700
+    if not secure_mode:
+        secure_mode = 0o600
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    tmp = Path(tmp_name)
+    try:
+        if os.name != "nt":
+            os.chmod(tmp, secure_mode)
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
+            json.dump(data, fh, indent=2, ensure_ascii=False)
+            fh.write("\n")
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, path)
+        if os.name != "nt":
+            os.chmod(path, secure_mode)
+    except Exception:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        raise
 
 
 def refresh_grok_auth(data: dict, account_id: str, entry: dict) -> dict:
@@ -251,23 +287,6 @@ def load_cursor_token() -> dict | None:
         con.close()
 
 
-def ms_to_iso(ms) -> str | None:
-    try:
-        return datetime.fromtimestamp(int(ms) / 1000, tz=timezone.utc).isoformat()
-    except (TypeError, ValueError, OSError):
-        return None
-
-
-def seconds_until(iso: str | None) -> int | None:
-    if not iso:
-        return None
-    try:
-        end = datetime.fromisoformat(iso.replace("Z", "+00:00"))
-        return max(0, int((end - datetime.now(timezone.utc)).total_seconds()))
-    except ValueError:
-        return None
-
-
 def fetch_cursor() -> dict | None:
     creds = load_cursor_token()
     if not creds:
@@ -295,8 +314,7 @@ def fetch_cursor() -> dict | None:
     except Exception as exc:
         errors["cursor_hard_limit"] = str(exc)
 
-    used = bot.get("usagePercent")
-    used = float(used) if used is not None else None
+    used = as_float(bot.get("usagePercent"))
     reset = bot.get("nextResetTimestampUtc") if bot else None
     plan_info = plan.get("planInfo") or {}
     plan_usage = period.get("planUsage") or {}
@@ -306,15 +324,22 @@ def fetch_cursor() -> dict | None:
     other_used = plan_usage.get("apiPercentUsed")
 
     def remain(used_pct) -> float | None:
-        if used_pct is None:
+        value = as_float(used_pct)
+        if value is None:
             return None
-        return max(0.0, 100.0 - float(used_pct))
+        return max(0.0, 100.0 - value)
+
+    bot_remaining = max(0.0, 100.0 - used) if used is not None else None
+    cursor_remaining = remain(models_used)
+    other_remaining = remain(other_used)
+    usable = any(value is not None for value in (bot_remaining, cursor_remaining, other_remaining))
 
     return {
+        "source_status": SOURCE_OK if usable else SOURCE_ERROR,
         "cursor_plan": plan_info.get("planName") or creds.get("plan"),
         "grok_bot": {
             "used_percent": used,
-            "remaining_percent": (max(0.0, 100.0 - used) if used is not None else None),
+            "remaining_percent": bot_remaining,
             "resets_at": reset,
         },
         "cursor_monthly": {
@@ -326,13 +351,13 @@ def fetch_cursor() -> dict | None:
             "cursor_models": {
                 "hint": "Composer / Cursor Grok 等自有模型",
                 "used_percent": models_used,
-                "remaining_percent": remain(models_used),
+                "remaining_percent": cursor_remaining,
                 "display_message": period.get("autoModelSelectedDisplayMessage"),
             },
             "other_models": {
                 "hint": "GPT / Claude 等第三方模型",
                 "used_percent": other_used,
-                "remaining_percent": remain(other_used),
+                "remaining_percent": other_remaining,
                 "display_message": period.get("namedModelSelectedDisplayMessage"),
             },
         },
@@ -358,6 +383,8 @@ def get_json(url: str, token: str) -> dict:
 def snapshot() -> dict:
     now = datetime.now(timezone.utc)
     errors: dict[str, str] = {}
+    grok_status = SOURCE_UNAVAILABLE if not grok_auth_file().exists() else SOURCE_ERROR
+    cursor_status = SOURCE_UNAVAILABLE
     entry: dict = {}
     cfg: dict = {}
     tier = None
@@ -370,6 +397,9 @@ def snapshot() -> dict:
                 raise
             token, entry = load_token(force_refresh=True)
             billing = get_json(BILLING_URL, token)
+        if not isinstance(billing.get("config"), dict):
+            raise RuntimeError("Grok billing response missing config")
+        grok_status = SOURCE_OK
         try:
             settings = get_json(SETTINGS_URL, token)
             tier = settings.get("subscription_tier_display")
@@ -394,11 +424,41 @@ def snapshot() -> dict:
         cursor = fetch_cursor()
         if cursor is None:
             errors["cursor"] = "未找到 Cursor 登录，请先打开 Cursor 并登录"
+            cursor_status = SOURCE_UNAVAILABLE
+        else:
+            cursor_status = str(cursor.get("source_status") or SOURCE_ERROR)
+            cursor_errors = cursor.get("errors") or {}
+            if isinstance(cursor_errors, dict):
+                for key, value in cursor_errors.items():
+                    name = key if str(key).startswith("cursor_") else f"cursor_{key}"
+                    errors[name] = str(value)
+            if cursor_status == SOURCE_ERROR and not cursor_errors:
+                errors["cursor"] = "Cursor 接口未返回有效额度数据"
     except Exception as exc:
         cursor = {"error": str(exc)}
         errors["cursor"] = str(exc)
+        cursor_status = SOURCE_ERROR
+
+    source_states = (grok_status, cursor_status)
+    if all(state == SOURCE_OK for state in source_states):
+        status = STATUS_COMPLETE
+    elif any(state == SOURCE_OK for state in source_states):
+        status = STATUS_PARTIAL
+    else:
+        status = STATUS_FAILED
+
+    sources = {
+        "grok": {"status": grok_status},
+        "cursor": {"status": cursor_status},
+    }
+    if errors.get("grok"):
+        sources["grok"]["error"] = errors["grok"]
+    if errors.get("cursor"):
+        sources["cursor"]["error"] = errors["cursor"]
 
     return {
+        "status": status,
+        "sources": sources,
         "fetched_at": now.isoformat(),
         "plan": tier,
         "period": {"end": reset_iso},
@@ -410,53 +470,25 @@ def snapshot() -> dict:
     }
 
 
-def one_line(snap: dict) -> str:
-    products = snap.get("products_used_percent") or {}
-    bits = [
-        f"{k.replace('Grok', '')} {v:.0f}%" for k, v in sorted(products.items())
-    ]
-    product_part = " · ".join(bits) if bits else "no product split"
-    reset = snap.get("period", {}).get("end") or "?"
-    plan = snap.get("plan") or "Grok"
-    remaining = snap.get("remaining_percent")
-    remaining_txt = f"{remaining:.0f}%" if remaining is not None else "—"
-    line = (
-        f"{plan} remaining {remaining_txt} "
-        f"(used {snap.get('used_percent') or 0:.0f}%) | {product_part} | "
-        f"resets {reset}"
-    )
-    bot = ((snap.get("cursor") or {}).get("grok_bot") or {})
-    if bot.get("remaining_percent") is not None:
-        bot_reset = bot.get("resets_at") or "?"
-        line += (
-            f" || Grok Bot remaining {bot['remaining_percent']:.1f}% "
-            f"(used {bot.get('used_percent', 0):.1f}%) | resets {bot_reset}"
-        )
-    monthly = ((snap.get("cursor") or {}).get("cursor_monthly") or {})
-    cm = monthly.get("cursor_models") or {}
-    om = monthly.get("other_models") or {}
-    if cm.get("remaining_percent") is not None:
-        line += f" || Cursor模型 remaining {cm['remaining_percent']:.1f}%"
-    if om.get("remaining_percent") is not None:
-        line += f" || 其他模型 remaining {om['remaining_percent']:.1f}%"
-    return line
-
-
-def write_snapshot(snap: dict) -> None:
+def write_snapshot(snap: dict) -> bool:
+    if not snapshot_is_usable(snap):
+        return False
     out_dir = data_dir()
-    (out_dir / "usage.json").write_text(
-        json.dumps(snap, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
-    )
-    (out_dir / "usage.txt").write_text(one_line(snap) + "\n", encoding="utf-8")
+    write_snapshot_files(out_dir, snap, one_line(snap))
+    return True
 
 
 def fetch_once(quiet: bool = False) -> dict:
     snap = snapshot()
-    write_snapshot(snap)
+    written = write_snapshot(snap)
     if not quiet:
         print(one_line(snap))
-        print(f"wrote {OUT_JSON}")
-        print(f"wrote {OUT_TXT}")
+        if written:
+            out_dir = data_dir()
+            print(f"wrote {out_dir / 'usage.json'}")
+            print(f"wrote {out_dir / 'usage.txt'}")
+        else:
+            print("kept previous snapshot", file=sys.stderr)
     return snap
 
 
@@ -473,7 +505,7 @@ def main() -> int:
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args()
     try:
-        fetch_once(quiet=args.quiet)
+        snap = fetch_once(quiet=args.quiet)
         if args.watch:
             while True:
                 time.sleep(max(15, args.interval))
@@ -481,7 +513,7 @@ def main() -> int:
                     fetch_once(quiet=args.quiet)
                 except Exception as exc:
                     print(f"refresh failed: {exc}", file=sys.stderr)
-        return 0
+        return exit_code_for_snapshot(snap)
     except urllib.error.HTTPError as exc:
         print(f"HTTP {exc.code}: {exc.reason}", file=sys.stderr)
         if exc.code in (401, 403):
@@ -490,6 +522,9 @@ def main() -> int:
     except SystemExit as exc:
         print(exc, file=sys.stderr)
         return 1
+    except Exception as exc:
+        print(f"fatal: {exc}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":
