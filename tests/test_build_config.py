@@ -38,15 +38,15 @@ class BuildConfigTests(unittest.TestCase):
         self.assertIn("-r requirements.txt", build)
 
     def test_version_is_documented_consistently(self) -> None:
-        version_file = (ROOT / "VERSION").read_text(encoding="utf-8")
+        version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
         version_module = (ROOT / "app_version.py").read_text(encoding="utf-8")
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
         instructions = (ROOT / "使用说明.txt").read_text(encoding="utf-8")
-        for content in (version_file, version_module, readme, changelog, instructions):
-            self.assertIn("0.3.0", content)
+        for content in (version_module, readme, changelog, instructions):
+            self.assertIn(version, content)
         self.assertIn("0.1.0", changelog)
-        self.assertIn("v0.3.0", readme)
+        self.assertIn(f"v{version}", readme)
 
     def test_code_and_asset_licenses_are_separate(self) -> None:
         license_text = (ROOT / "LICENSE").read_text(encoding="utf-8")

@@ -60,6 +60,7 @@ class SourceSmokeTests(unittest.TestCase):
                 self.assertTrue(payload["spritesheetPath"])
                 self.assertIn("atlas", payload)
                 self.assertIn("animations", payload)
+                self.assertIn("theme", payload)
                 atlas = payload["atlas"]
                 self.assertEqual(atlas["columns"] * atlas["cellWidth"], atlas["width"])
                 self.assertEqual(atlas["rows"] * atlas["cellHeight"], atlas["height"])
@@ -70,6 +71,45 @@ class SourceSmokeTests(unittest.TestCase):
         self.assertEqual(pet.DEFAULT_SKIN_ID, "original")
         self.assertEqual(specs[0]["id"], "original")
         self.assertEqual(pet.activate_skin("missing-theme"), "original")
+
+    def test_skin_themes_are_distinct_and_invalid_tokens_fall_back(self) -> None:
+        try:
+            pet.activate_skin("original")
+            original = dict(pet.style())
+            pet.activate_skin("megumi-kato")
+            megumi = dict(pet.style())
+        finally:
+            pet.activate_skin("original")
+        self.assertEqual(original["decoration"], "circuit")
+        self.assertEqual(megumi["decoration"], "bow")
+        self.assertNotEqual(original["bubble_fill"], megumi["bubble_fill"])
+
+        fallback = pet.resolve_theme(
+            {"preset": "missing", "bubbleFill": "red", "barStyle": "pill", "radius": 999}
+        )
+        self.assertEqual(fallback["bubble_fill"], pet.STYLES[pet.DEFAULT_THEME_PRESET]["bubble_fill"])
+        self.assertEqual(fallback["bar_style"], "rounded")
+        self.assertEqual(fallback["radius"], 28)
+
+        custom = pet.resolve_theme({"preset": "tech", "accent": "#ABCDEF"})
+        self.assertEqual(custom["accent"], "#ABCDEF")
+
+    def test_legacy_fixed_open_state_is_not_restored(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            state_file = Path(td) / "pet_state.json"
+            state_file.write_text(
+                json.dumps({"x": 12, "pinned": True, "expanded": True, "skin": "original"}),
+                encoding="utf-8",
+            )
+            with mock.patch.object(pet, "STATE_FILE", state_file):
+                state = pet.load_state()
+                self.assertEqual(state["x"], 12)
+                self.assertNotIn("pinned", state)
+                self.assertNotIn("expanded", state)
+                pet.save_state({"skin": "original"})
+            persisted = json.loads(state_file.read_text(encoding="utf-8"))
+            self.assertNotIn("pinned", persisted)
+            self.assertNotIn("expanded", persisted)
 
     def test_watcher_launch_policy_is_pure(self) -> None:
         with (

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.1 — 2026-08-30
+
+Theme and hover-behavior update. Git tag: `v0.3.1`.
+
+- Let every skin select a validated, data-driven UI theme in `pet.json`.
+- Give Original/Pip a cyan-on-navy technology theme with circuit decoration.
+- Keep Megumi Kato visually distinct with the existing warm, soft card theme.
+- Apply skin themes to quota cards, progress bars, reset tips, and settings.
+- Treat fixed-open quota cards as a session-only interaction and discard legacy
+  `pinned`/`expanded` state that could make the quota window appear stuck open.
+- Document the theme manifest contract and retain safe fallbacks for older skins.
+
 ## 0.3.0 — 2026-08-29
 
 Product and release-foundation update. Git tag: `v0.3.0`.

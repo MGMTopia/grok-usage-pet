@@ -5,6 +5,13 @@
   "spritesheetPath": "spritesheet.webp",
   "icon": "app.ico",
   "iconPng": "app.png",
+  "theme": {
+    "preset": "tech",
+    "bubbleStyle": "rounded",
+    "barStyle": "rounded",
+    "tipStyle": "rounded",
+    "decoration": "circuit"
+  },
   "atlas": {
     "width": 1536,
     "height": 2288,

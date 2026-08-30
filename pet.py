@@ -7,6 +7,7 @@ import json
 import math
 import os
 import queue
+import re
 import shlex
 import subprocess
 import sys
@@ -47,8 +48,8 @@ CELL_W = 192
 CELL_H = 208
 SPRITE_W = 192
 SPRITE_H = 208
-# "classic" is the previous dark quota UI; kept but not offered in settings.
-UI_THEME = "kawaii"
+# "classic" is the previous dark quota UI; kept as a compatibility preset.
+DEFAULT_THEME_PRESET = "soft"
 STYLES = {
     "classic": {
         "row_h": 38,
@@ -79,8 +80,51 @@ STYLES = {
         "settings_select": "#111111",
         "settings_active": "#ffffff",
         "radius": 0,
+        "bubble_style": "classic",
+        "bar_style": "square",
+        "tip_style": "square",
+        "decoration": "none",
+        "accent": "#5eead4",
+        "inner": "#111111",
     },
-    "kawaii": {
+    "tech": {
+        "row_h": 44,
+        "bubble_w": 276,
+        "bubble_top": 20,
+        "bubble_bottom": 14,
+        "bubble_fill": "#10243a",
+        "bubble_outline": "#45dff2",
+        "bubble_shadow": "#071522",
+        "label": "#a9c9d8",
+        "label_hot": "#72f1ff",
+        "bar_track": "#203b52",
+        "bar_ok": "#36d9c4",
+        "bar_mid": "#f0bd57",
+        "bar_low": "#ff6688",
+        "pct": "#d9f8ff",
+        "tip_fill": "#0d1d30",
+        "tip_outline": "#45dff2",
+        "tip_title": "#72f1ff",
+        "tip_text": "#d7eaf2",
+        "spinner": "#72f1ff",
+        "font": ("Microsoft YaHei UI", 9),
+        "font_title": ("Microsoft YaHei UI", 9, "bold"),
+        "font_ui": ("Microsoft YaHei UI", 10),
+        "settings_bg": "#0b1b2b",
+        "settings_fg": "#d7eaf2",
+        "settings_muted": "#7898aa",
+        "settings_text": "#d7eaf2",
+        "settings_select": "#17334a",
+        "settings_active": "#72f1ff",
+        "radius": 10,
+        "accent": "#45dff2",
+        "inner": "#10243a",
+        "bubble_style": "rounded",
+        "bar_style": "rounded",
+        "tip_style": "rounded",
+        "decoration": "circuit",
+    },
+    "soft": {
         "row_h": 44,
         "bubble_w": 276,
         "bubble_top": 20,
@@ -112,7 +156,43 @@ STYLES = {
         "radius": 18,
         "accent": "#c94b4b",
         "inner": "#ffffff",
+        "bubble_style": "rounded",
+        "bar_style": "rounded",
+        "tip_style": "rounded",
+        "decoration": "bow",
     },
+}
+ACTIVE_STYLE = dict(STYLES[DEFAULT_THEME_PRESET])
+THEME_COLOR_KEYS = {
+    "bubbleFill": "bubble_fill",
+    "bubbleOutline": "bubble_outline",
+    "bubbleShadow": "bubble_shadow",
+    "label": "label",
+    "labelHot": "label_hot",
+    "barTrack": "bar_track",
+    "barOk": "bar_ok",
+    "barMid": "bar_mid",
+    "barLow": "bar_low",
+    "percentage": "pct",
+    "tipFill": "tip_fill",
+    "tipOutline": "tip_outline",
+    "tipTitle": "tip_title",
+    "tipText": "tip_text",
+    "spinner": "spinner",
+    "accent": "accent",
+    "settingsBackground": "settings_bg",
+    "settingsForeground": "settings_fg",
+    "settingsMuted": "settings_muted",
+    "settingsText": "settings_text",
+    "settingsSelect": "settings_select",
+    "settingsActive": "settings_active",
+    "inner": "inner",
+}
+THEME_STYLE_KEYS = {
+    "bubbleStyle": ("bubble_style", {"classic", "rounded"}),
+    "barStyle": ("bar_style", {"square", "rounded"}),
+    "tipStyle": ("tip_style", {"square", "rounded"}),
+    "decoration": ("decoration", {"none", "bow", "circuit"}),
 }
 BUBBLE_ROWS = ("sg", "bot", "cm", "om")
 ROW_LABELS = {
@@ -185,7 +265,7 @@ def list_skins() -> list[dict]:
 
 
 def activate_skin(skin_id: str) -> str:
-    global ASSETS, CELL_W, CELL_H, SPRITE_W, SPRITE_H, ATLAS_SIZE, ATLAS_NAME, ANIMATIONS, ANIM_MS, LOOK_ROWS
+    global ASSETS, CELL_W, CELL_H, SPRITE_W, SPRITE_H, ATLAS_SIZE, ATLAS_NAME, ANIMATIONS, ANIM_MS, LOOK_ROWS, ACTIVE_STYLE
     if not skin_ready(skin_id):
         skin_id = DEFAULT_SKIN_ID
     spec = load_skin_spec(skin_id)
@@ -214,11 +294,32 @@ def activate_skin(skin_id: str) -> str:
     LOOK_ROWS = tuple((int(row), fpr) for row in rows)
     folder = skin_folder(skin_id)
     ASSETS = folder
+    ACTIVE_STYLE = resolve_theme(spec.get("theme"))
     return str(spec.get("id") or skin_id)
 
 
+def resolve_theme(raw: object) -> dict:
+    theme = raw if isinstance(raw, dict) else {}
+    preset = str(theme.get("preset") or DEFAULT_THEME_PRESET).strip().lower()
+    if preset not in STYLES:
+        preset = DEFAULT_THEME_PRESET
+    resolved = dict(STYLES[preset])
+    for public_key, internal_key in THEME_COLOR_KEYS.items():
+        value = theme.get(public_key)
+        if isinstance(value, str) and re.fullmatch(r"#[0-9a-fA-F]{6}", value):
+            resolved[internal_key] = value
+    for public_key, (internal_key, allowed) in THEME_STYLE_KEYS.items():
+        value = str(theme.get(public_key) or "").strip().lower()
+        if value in allowed:
+            resolved[internal_key] = value
+    radius = theme.get("radius")
+    if isinstance(radius, (int, float)) and not isinstance(radius, bool):
+        resolved["radius"] = max(0, min(28, int(radius)))
+    return resolved
+
+
 def style() -> dict:
-    return STYLES.get(UI_THEME) or STYLES["kawaii"]
+    return ACTIVE_STYLE
 
 
 def pick_ui_fonts(root: tk.Tk) -> None:
@@ -230,9 +331,15 @@ def pick_ui_fonts(root: tk.Tk) -> None:
             break
     if not cute:
         cute = "Microsoft YaHei UI"
-    STYLES["kawaii"]["font"] = (cute, 9)
-    STYLES["kawaii"]["font_title"] = (cute, 9, "bold")
-    STYLES["kawaii"]["font_ui"] = (cute, 10)
+    for preset in STYLES.values():
+        size = 8 if preset.get("bubble_style") == "classic" else 9
+        preset["font"] = (cute, size)
+        preset["font_title"] = (cute, size, "bold")
+        preset["font_ui"] = (cute, 10)
+    size = 8 if ACTIVE_STYLE.get("bubble_style") == "classic" else 9
+    ACTIVE_STYLE["font"] = (cute, size)
+    ACTIVE_STYLE["font_title"] = (cute, size, "bold")
+    ACTIVE_STYLE["font_ui"] = (cute, 10)
 
 
 def canvas_round_rect(canvas: tk.Canvas, x1: float, y1: float, x2: float, y2: float, r: float = 12, **kwargs):
@@ -306,9 +413,15 @@ def claim_singleton() -> bool:
 def load_state() -> dict:
     if STATE_FILE.exists():
         try:
-            return json.loads(STATE_FILE.read_text(encoding="utf-8"))
+            data = json.loads(STATE_FILE.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
             return {}
+        if isinstance(data, dict):
+            # Fixed-open is a session interaction. Older builds persisted both
+            # fields, which could make the quota card look permanently stuck.
+            data.pop("expanded", None)
+            data.pop("pinned", None)
+            return data
     return {}
 
 
@@ -596,9 +709,12 @@ class UsagePet:
         self._preview_mode = preview_snapshot is not None
         self.snap: dict | None = preview_snapshot
         self.error: str | None = None
-        self.pinned = True if self._preview_mode else bool(load_state().get("pinned", False))
-        self.skin_id = activate_skin(str(load_state().get("skin") or DEFAULT_SKIN_ID))
+        state = load_state()
+        self.pinned = self._preview_mode
+        self.skin_id = activate_skin(str(state.get("skin") or DEFAULT_SKIN_ID))
         self.enabled = load_enabled()
+        if not self._preview_mode and STATE_FILE.exists():
+            save_state({})
         self._settings: tk.Toplevel | None = None
         self._drag = None
         self._drag_dx = 0
@@ -654,7 +770,8 @@ class UsagePet:
 
         self.menu = Menu(self.root, tearoff=0)
         self.menu.add_command(label="刷新额度", command=self.refresh_now)
-        self.menu.add_command(label="固定 / 取消固定额度", command=self.toggle_expand)
+        self.menu.add_command(label="固定额度条（本次运行）", command=self.toggle_expand)
+        self._pin_menu_index = 1
         self.menu.add_command(label="设置…", command=self.open_settings)
         self.menu.add_command(label="创建桌面快捷方式", command=self.install_shortcut)
         self.menu.add_separator()
@@ -901,13 +1018,12 @@ class UsagePet:
             "x": x,
             "y": y,
             "enabled": dict(self.enabled),
-            "pinned": self.pinned,
             "skin": self.skin_id,
         }
         try:
             save_state(payload)
         except tk.TclError:
-            save_state({"enabled": dict(self.enabled), "pinned": self.pinned, "skin": self.skin_id})
+            save_state({"enabled": dict(self.enabled), "skin": self.skin_id})
 
     def _remainings(self) -> list[float]:
         if not self.snap:
@@ -1024,6 +1140,10 @@ class UsagePet:
 
     def on_menu(self, event) -> None:
         self._cancel_collapse()
+        self.menu.entryconfigure(
+            self._pin_menu_index,
+            label="取消固定额度条" if self.pinned else "固定额度条（本次运行）",
+        )
         if not self._hover_open:
             self._reveal_bars(jump=False)
             self.draw()
@@ -1171,7 +1291,7 @@ class UsagePet:
             bind(sub)
             self._skin_chips[sid] = chip
         self._paint_skin_chips()
-        hint("原创图集放到 skins\\original\\spritesheet.webp 后再选。格子说明在该目录。")
+        hint("皮肤会同时切换角色、额度卡、提示框与设置配色。")
 
         heading("额度条")
         inner = card()
@@ -1205,12 +1325,9 @@ class UsagePet:
 
     def _pick_skin(self, skin_id: str, ready: bool) -> None:
         self._skin_var.set(skin_id)
-        if not ready:
-            self._on_skin()
+        changed = self._on_skin()
+        if not changed:
             self._paint_skin_chips()
-            return
-        self._on_skin()
-        self._paint_skin_chips()
 
     def _sync_setting_vars(self) -> None:
         if not hasattr(self, "_grok_start_var"):
@@ -1225,10 +1342,10 @@ class UsagePet:
             paint()
         self._paint_skin_chips()
 
-    def _on_skin(self) -> None:
+    def _on_skin(self) -> bool:
         want = str(self._skin_var.get() or "")
         if not want or want == self.skin_id:
-            return
+            return False
         if not skin_ready(want):
             self._skin_var.set(self.skin_id)
             self._toast(
@@ -1236,7 +1353,8 @@ class UsagePet:
                 + str(skin_folder(want))
                 + "\n（说明见 素材说明.txt）"
             )
-            return
+            return False
+        reopen_settings = self._settings is not None and self._settings.winfo_exists()
         self.skin_id = activate_skin(want)
         self._oneshot = None
         self._waved = False
@@ -1244,12 +1362,18 @@ class UsagePet:
         self._photos.pop("_app_icon", None)
         self._load_sprites()
         self._apply_app_icon(self.root)
-        if self._settings is not None and self._settings.winfo_exists():
-            self._apply_app_icon(self._settings)
+        if reopen_settings:
+            self._settings.destroy()
+            self._settings = None
+            self._skin_chips = {}
         self.persist()
         self._apply_layout()
         self.draw()
-        self._paint_skin_chips()
+        if reopen_settings:
+            self.root.after_idle(self.open_settings)
+        else:
+            self._paint_skin_chips()
+        return True
 
     def _on_toggle(self, key: str) -> None:
         var = self._enabled_vars.get(key)
@@ -1473,18 +1597,18 @@ class UsagePet:
         return build_pools(self.snap)
 
     def _draw_bubble(self) -> None:
-        if UI_THEME == "classic":
+        if style().get("bubble_style") == "classic":
             self._draw_bubble_classic()
             return
         self._draw_bubble_kawaii()
 
     def _draw_bubble_classic(self) -> None:
         c = self.canvas
-        ui = STYLES["classic"]
+        ui = style()
         rows = self.visible_rows()
         if not rows:
             return
-        y1 = ui["bubble_top"] + len(rows) * ui["row_h"]
+        y1 = ui["bubble_top"] + len(rows) * ui["row_h"] + int(ui.get("bubble_bottom") or 0)
         x0, y0, x1 = 10, ui["bubble_top"], self._win_w - 10
         c.create_rectangle(x0, y0, x1, y1, fill=ui["bubble_fill"], outline=ui["bubble_outline"], width=1)
         c.create_polygon(
@@ -1520,6 +1644,17 @@ class UsagePet:
         c.create_oval(x + 1, y - 5, x + 8, y + 5, fill=red, outline=edge, width=1)
         c.create_oval(x - 2.5, y - 3, x + 2.5, y + 3, fill="#d96a6a", outline=edge, width=1)
 
+    def _draw_theme_mark(self, x: float, y: float) -> None:
+        ui = style()
+        decoration = ui.get("decoration", "none")
+        if decoration == "bow":
+            self._draw_bow(x, y)
+        elif decoration == "circuit":
+            accent = ui.get("accent", "#45dff2")
+            c = self.canvas
+            c.create_line(x - 15, y, x - 5, y, x, y + 5, x + 5, y, x + 15, y, fill=accent, width=2)
+            c.create_oval(x - 2.5, y + 2.5, x + 2.5, y + 7.5, fill=accent, outline="")
+
     def _draw_bubble_kawaii(self) -> None:
         c = self.canvas
         ui = style()
@@ -1551,7 +1686,7 @@ class UsagePet:
             cx, y1 + 10,
             fill=ui["bubble_fill"], outline=ui["bubble_fill"],
         )
-        self._draw_bow(cx, y0)
+        self._draw_theme_mark(cx, y0)
         pools = self._pools()
         for i, key in enumerate(rows):
             top = y0 + i * ui["row_h"]
@@ -1658,7 +1793,7 @@ class UsagePet:
             ty = my - height - 8
         tx = max(6, min(tx, self._win_w - width - 6))
         ty = max(6, min(ty, self._win_h - height - 6))
-        if UI_THEME == "kawaii":
+        if ui.get("tip_style") == "rounded":
             canvas_round_rect(
                 c, tx, ty, tx + width, ty + height, 12,
                 fill=ui["tip_fill"], outline=ui["tip_outline"], width=2,
@@ -1708,16 +1843,15 @@ class UsagePet:
     def _bar(self, x: int, y: int, w: int, h: int, remaining) -> None:
         c = self.canvas
         ui = style()
-        cute = UI_THEME == "kawaii"
-        if cute:
+        rounded = ui.get("bar_style") == "rounded"
+        if rounded:
             canvas_round_rect(c, x, y, x + w, y + h, h / 2, fill=ui["bar_track"], outline="")
         else:
             c.create_rectangle(x, y, x + w, y + h, fill=ui["bar_track"], outline="")
         if remaining is None:
             pulse = 0.55 + 0.25 * math.sin(self._tick / 7.0)
-            if cute:
-                mix = int(180 + 40 * pulse)
-                fill = f"#{mix:02x}{int(mix * 0.72):02x}{int(mix * 0.70):02x}"
+            if rounded:
+                fill = ui["bar_ok"]
             else:
                 gray = int(40 + 50 * pulse)
                 fill = f"#{gray:02x}{gray:02x}{int(gray * 1.15):02x}"
@@ -1725,7 +1859,7 @@ class UsagePet:
             offset = int((w - 22 - sweep) * (0.5 + 0.5 * math.sin(self._tick / 11.0)))
             x1 = x + offset
             x2 = x + offset + max(8, sweep)
-            if cute:
+            if rounded:
                 canvas_round_rect(c, x1, y, x2, y + h, h / 2, fill=fill, outline="")
             else:
                 c.create_rectangle(x1, y, x2, y + h, fill=fill, outline="")
@@ -1733,13 +1867,13 @@ class UsagePet:
             return
         pct = max(0.0, min(100.0, float(remaining)))
         fill = ui["bar_ok"] if pct >= 50 else ui["bar_mid"] if pct >= 20 else ui["bar_low"]
-        fw = max(h if cute else 2, int(w * pct / 100.0)) if pct > 0 else 0
+        fw = max(h if rounded else 2, int(w * pct / 100.0)) if pct > 0 else 0
         if fw > 0:
-            if cute:
+            if rounded:
                 canvas_round_rect(c, x, y, x + min(w, fw), y + h, h / 2, fill=fill, outline="")
             else:
                 c.create_rectangle(x, y, x + fw, y + h, fill=fill, outline="")
-        if not cute:
+        if not rounded and ui.get("bubble_style") == "classic":
             c.create_text(
                 x + w - 2,
                 y + h // 2,

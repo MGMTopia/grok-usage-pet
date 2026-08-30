@@ -1,7 +1,7 @@
 Grok Usage Pet
 ==============
 
-版本：0.3.0（GitHub 标签 v0.3.0）
+版本：0.3.1（GitHub 标签 v0.3.1）
 
 看 SuperGrok 周额度、Grok Bot 周额度，以及 Cursor 两个月额度池的透明桌宠。
 不是 xAI / Cursor 官方软件。账单接口以后可能会变。
@@ -11,7 +11,7 @@ Grok Usage Pet
 
 即插即用
 --------
-1. 解压整个「GrokUsagePet-v0.3.0-Windows-x64」文件夹，不要只拷贝 exe。
+1. 解压整个「GrokUsagePet-v0.3.1-Windows-x64」文件夹，不要只拷贝 exe。
 2. 本机先登录一次（登哪个就显示哪条；不必一直开着软件）：
    - SuperGrok：安装 Grok CLI 后运行  grok login
    - Grok Bot 和 Cursor 额度：打开 Cursor 并登录
@@ -37,7 +37,7 @@ Grok Usage Pet
 - 鼠标停在某一条上：显示重置时间
 - 鼠标离开：额度条收起
 - 拖动角色移动位置
-- 双击：固定 / 取消固定额度条
+- 双击：固定 / 取消固定额度条（只在本次运行中生效，重启后默认收起）
 - 右键 → 退出宠物
 - 快捷方式 / 设置窗口图标使用当前默认 Original 主题
 - 右键 → 设置 → 形象：可在「Original / Pip」和「Megumi Kato」之间切换

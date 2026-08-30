@@ -22,8 +22,11 @@ provider fails.
 ## Pet engine
 
 `skin_catalog.py` discovers theme manifests and assets. `pet.py` maps normalized
-quota values into the Tk view model and selects animation rows defined by the
-active theme. Themes use the Codex-compatible v2 8×11 atlas contract: nine
+quota values into the Tk view model, selects animation rows, and resolves UI
+tokens defined by the active theme. Each `pet.json` may select a `theme.preset`
+and override validated colors, card, bar, tooltip, radius, and decoration styles.
+Manifests without `theme` retain the soft compatibility preset. Themes use the
+Codex-compatible v2 8×11 atlas contract: nine
 standard animation rows and sixteen look directions.
 
 The v0.3 structure makes `original` the default and keeps `megumi-kato`

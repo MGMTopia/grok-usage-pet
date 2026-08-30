@@ -1,7 +1,7 @@
 # Grok Usage Pet
 
 一个常驻桌面的透明小宠物，用一眼能懂的方式显示 SuperGrok、Grok Bot 和
-Cursor 额度与重置时间。当前版本：**0.3.0**。
+Cursor 额度与重置时间。当前版本：**0.3.1**。
 
 <p>
   <img src="skins/original/app.png" alt="Original Pip theme" width="96">
@@ -14,7 +14,7 @@ Cursor 额度与重置时间。当前版本：**0.3.0**。
 ## 下载与使用
 
 从 [GitHub Releases](https://github.com/liruilong0805/grok-usage-pet/releases)
-下载 `GrokUsagePet-v0.3.0-Windows-x64.zip`，完整解压后双击
+下载 `GrokUsagePet-v0.3.1-Windows-x64.zip`，完整解压后双击
 `GrokUsagePet.exe`。Windows 10/11 无需安装 Python。
 
 至少登录一个数据来源：
@@ -22,7 +22,7 @@ Cursor 额度与重置时间。当前版本：**0.3.0**。
 - SuperGrok：通过 Grok CLI 完成 `grok login`；
 - Grok Bot / Cursor：在 Cursor 中登录。
 
-鼠标靠近宠物会展开额度，悬停可看重置时间；拖动可移动，双击可固定，
+鼠标靠近宠物会展开额度，悬停可看重置时间；拖动可移动，双击可在本次运行中固定，
 右键可刷新、切换主题或退出。更完整的中文说明见
 [docs/USAGE.zh-CN.md](docs/USAGE.zh-CN.md)。
 

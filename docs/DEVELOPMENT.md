@@ -32,6 +32,7 @@ network, or read real Grok/Cursor credentials.
 - `snapshot_store.py`: atomic last-known-good snapshot persistence
 - `cursor_hooks.py`: safe shared Cursor hook management
 - `skin_catalog.py`: theme discovery and validation
+- `docs/THEMING.md`: data-driven skin theme tokens and compatibility rules
 - `pet_view_model.py`: pure UI quota mapping
 - `tests/`: offline unit and smoke tests
 
