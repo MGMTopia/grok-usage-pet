@@ -1,0 +1,37 @@
+name: Test
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-build.txt
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements-build.txt
+
+      - name: Run offline tests
+        shell: pwsh
+        run: ./run-tests.ps1 -PythonExe python
+
+      - name: Compile entry modules
+        run: >-
+          python -m compileall -q
+          pet.py fetch_usage.py watch_apps.py start_pet.py
+          app_version.py usage_model.py snapshot_store.py cursor_hooks.py
+          skin_catalog.py pet_view_model.py
