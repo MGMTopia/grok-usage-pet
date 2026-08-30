@@ -1,7 +1,7 @@
 {
   "id": "original",
-  "displayName": "原创",
-  "description": "按加藤惠同款 8×11 图集放入 spritesheet.webp 后，在设置里选「原创」即可。",
+  "displayName": "Original / Pip",
+  "description": "项目原创像素机器人，也是 Grok Usage Pet 的默认主题。",
   "spritesheetPath": "spritesheet.webp",
   "icon": "app.ico",
   "iconPng": "app.png",

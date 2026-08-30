@@ -5,7 +5,7 @@ a = Analysis(
     ['pet.py'],
     pathex=[],
     binaries=[],
-    datas=[('assets', 'assets'), ('skins', 'skins')],
+    datas=[('skins', 'skins')],
     hiddenimports=['fetch_usage', 'watch_apps', 'app_version', 'usage_model', 'snapshot_store', 'cursor_hooks', 'skin_catalog', 'pet_view_model', 'PIL._tkinter_finder'],
     hookspath=[],
     hooksconfig={},
@@ -21,7 +21,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='GrokUsagePetKawaii',
+    name='GrokUsagePet',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -32,7 +32,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['assets/app.ico'],
+    icon=['skins/original/app.ico'],
 )
 coll = COLLECT(
     exe,
@@ -41,5 +41,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='GrokUsagePetKawaii',
+    name='GrokUsagePet',
 )

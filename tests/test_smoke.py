@@ -41,9 +41,9 @@ class SourceSmokeTests(unittest.TestCase):
         self.assertEqual(set(pet.build_pools(snap)), {"sg", "bot", "cm", "om"})
 
     def test_default_skin_metadata_matches_sprite_dimensions(self) -> None:
-        spec = json.loads((ROOT / "skins" / "megumi-kato" / "pet.json").read_text(encoding="utf-8"))
+        spec = json.loads((ROOT / "skins" / "original" / "pet.json").read_text(encoding="utf-8"))
         atlas = spec["atlas"]
-        sprite = ROOT / "skins" / "megumi-kato" / spec["spritesheetPath"]
+        sprite = ROOT / "skins" / "original" / spec["spritesheetPath"]
         with Image.open(sprite) as image:
             self.assertEqual(image.size, (atlas["width"], atlas["height"]))
             image.verify()
@@ -64,6 +64,13 @@ class SourceSmokeTests(unittest.TestCase):
                 self.assertEqual(atlas["columns"] * atlas["cellWidth"], atlas["width"])
                 self.assertEqual(atlas["rows"] * atlas["cellHeight"], atlas["height"])
 
+    def test_original_is_the_default_and_first_theme(self) -> None:
+        specs = pet.list_skins()
+        self.assertGreaterEqual(len(specs), 2)
+        self.assertEqual(pet.DEFAULT_SKIN_ID, "original")
+        self.assertEqual(specs[0]["id"], "original")
+        self.assertEqual(pet.activate_skin("missing-theme"), "original")
+
     def test_watcher_launch_policy_is_pure(self) -> None:
         with (
             mock.patch.object(pet, "grok_autostart_on", return_value=True),
@@ -75,7 +82,8 @@ class SourceSmokeTests(unittest.TestCase):
 
 class ReleaseSafetySmokeTests(unittest.TestCase):
     def test_existing_zip_contains_no_user_secrets(self) -> None:
-        archive = ROOT / "release" / "GrokUsagePet-kawaii.zip"
+        version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
+        archive = ROOT / "release" / f"GrokUsagePet-v{version}-Windows-x64.zip"
         if not archive.exists():
             self.skipTest("release archive not built")
         forbidden = {

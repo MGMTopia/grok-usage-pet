@@ -1,7 +1,13 @@
-# Distribution notice
+# Notices
 
-This is an unofficial personal project and is not an xAI, Cursor, OpenAI, or anime-rights-holder product.
+Grok Usage Pet is an unofficial community project. It is not affiliated with,
+endorsed by, or sponsored by xAI, Cursor, OpenAI, Microsoft, or any anime or
+media rights holder.
 
-The included Kato Megumi character artwork is unofficial fan work intended for personal, non-commercial use. Do not resell it, imply endorsement, or treat the artwork as commercially licensed.
+The MIT License in [LICENSE](LICENSE) applies to this project's source code
+only. Artwork, character themes, icons, fonts, and other media may have
+different terms. See [ASSETS_NOTICE.md](ASSETS_NOTICE.md) before copying or
+redistributing packaged assets.
 
-No standalone license has yet been selected for this project's source code. Before publishing or accepting outside contributions, choose an explicit code license and separately review the rights and redistribution terms for all artwork, icons, fonts, Python, Tcl/Tk, Pillow, PyInstaller, and other packaged components.
+Product names and trademarks belong to their respective owners. Their use here
+only identifies compatible local services and does not imply endorsement.

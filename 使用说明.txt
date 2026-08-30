@@ -1,21 +1,21 @@
-Grok 额度宠物（可爱版）
-====================
+Grok Usage Pet
+==============
 
-版本：0.2.0（GitHub 标签 v0.2.0；上一档为 0.1.0 未打标签快照）
+版本：0.3.0（GitHub 标签 v0.3.0）
 
 看 SuperGrok 周额度、Grok Bot 周额度，以及 Cursor 两个月额度池的透明桌宠。
 不是 xAI / Cursor 官方软件。账单接口以后可能会变。
 
-角色形象为《路人女主的养成方法》加藤惠的非官方同人像素，仅供个人把玩。
-请勿当作商业产品转售或暗示已获授权。
+默认角色 Pip 为项目原创像素机器人。加藤惠是可选的非官方同人主题，
+不属于 MIT 代码许可证，请勿暗示已获权利人授权。
 
 即插即用
 --------
-1. 解压整个「GrokUsagePet-kawaii」文件夹，不要只拷贝 exe。
+1. 解压整个「GrokUsagePet-v0.3.0-Windows-x64」文件夹，不要只拷贝 exe。
 2. 本机先登录一次（登哪个就显示哪条；不必一直开着软件）：
    - SuperGrok：安装 Grok CLI 后运行  grok login
    - Grok Bot 和 Cursor 额度：打开 Cursor 并登录
-3. Windows：双击 GrokUsagePetKawaii.exe
+3. Windows：双击 GrokUsagePet.exe
 4. 右键角色 → 设置：
    - 开关要显示的额度条
    - 开关「随 Grok Build 启动」「随 Cursor 启动」
@@ -39,15 +39,14 @@ Grok 额度宠物（可爱版）
 - 拖动角色移动位置
 - 双击：固定 / 取消固定额度条
 - 右键 → 退出宠物
-- 快捷方式 / 设置窗口图标为 Q 版加藤惠
-- 右键 → 设置 → 形象：可在「加藤惠」和「原创」之间切换
-  原创图集放到  skins\original\spritesheet.webp（格子说明见该目录）
+- 快捷方式 / 设置窗口图标使用当前默认 Original 主题
+- 右键 → 设置 → 形象：可在「Original / Pip」和「Megumi Kato」之间切换
 
-和上一版的关系
---------------
-上一版（深色毛绒）压缩包 GrokUsagePet.zip 仍可单独使用。
-本包是可爱版：exe、计划任务、数据目录都分开，两套可以并存。
-可爱版数据在  %LOCALAPPDATA%\GrokUsagePetKawaii
+从旧版升级
+----------
+程序统一使用  %LOCALAPPDATA%\GrokUsagePet。
+首次运行会在新目录没有同名文件时，从旧 GrokUsagePetKawaii 目录复制设置
+和最近额度；旧目录不会被删除。
 
 系统需求
 --------
@@ -59,5 +58,5 @@ Grok CLI 或 Cursor 至少登录过其中一个，对应额度才能显示。
 安全与发布边界
 ------------
 - 本程序不会把 auth.json、Cursor 数据库、额度快照或日志打进发布压缩包。
-- 加藤惠形象为非官方同人素材，仅供个人、非商业使用。
-- 项目未声明可供再发布的源码许可证；请勿直接转售、二次打包发布或暗示官方授权。
+- 代码采用 MIT 许可证；角色素材适用独立说明，详见 ASSETS_NOTICE.md。
+- 加藤惠形象为非官方同人素材，不表示已获授权。

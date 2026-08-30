@@ -5,15 +5,13 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$watchTask = "GrokUsagePetKawaiiWatch"
-$launchTask = "GrokUsagePetKawaiiLaunch"
-$exe = Join-Path $PSScriptRoot "GrokUsagePetKawaii.exe"
+$watchTask = "GrokUsagePetWatch"
+$launchTask = "GrokUsagePetLaunch"
+$exe = Join-Path $PSScriptRoot "GrokUsagePet.exe"
 $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited
 $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew
 
-if (-not (Test-Path $exe)) {
-    throw "missing $exe"
-}
+if (-not (Test-Path $exe)) { throw "missing $exe" }
 
 function Register-LaunchTask {
     $launchAction = New-ScheduledTaskAction -Execute $exe -WorkingDirectory $PSScriptRoot
@@ -28,7 +26,7 @@ if ($Action -eq "Disable") {
         Unregister-ScheduledTask -TaskName $watchTask -Confirm:$false
     }
     Get-CimInstance Win32_Process | Where-Object {
-        $_.Name -eq "GrokUsagePetKawaii.exe" -and $_.CommandLine -match "--watch"
+        $_.Name -eq "GrokUsagePet.exe" -and $_.CommandLine -match "--watch"
     } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
     return
 }

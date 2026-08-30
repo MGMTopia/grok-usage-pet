@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import sqlite3
 import stat
 import sys
@@ -58,13 +59,25 @@ def is_frozen() -> bool:
 
 
 def pack_id() -> str:
-    if is_frozen() and "kawaii" in Path(sys.executable).stem.lower():
-        return "kawaii"
-    return "source"
+    return "windows" if is_frozen() else "source"
 
 
 def app_data_name() -> str:
-    return "GrokUsagePetKawaii" if pack_id() == "kawaii" else APP_NAME
+    return APP_NAME
+
+
+def _migrate_legacy_data(base: Path, destination: Path) -> None:
+    legacy = base / "GrokUsagePetKawaii"
+    if not legacy.is_dir():
+        return
+    for name in ("pet_state.json", "usage.json", "usage.txt"):
+        source = legacy / name
+        target = destination / name
+        if source.is_file() and not target.exists():
+            try:
+                shutil.copy2(source, target)
+            except OSError:
+                pass
 
 
 def resource_dir() -> Path:
@@ -88,6 +101,7 @@ def data_dir() -> Path:
         base = Path(os.environ.get("XDG_DATA_HOME") or (Path.home() / ".local" / "share"))
     path = base / app_data_name()
     path.mkdir(parents=True, exist_ok=True)
+    _migrate_legacy_data(base, path)
     return path
 
 

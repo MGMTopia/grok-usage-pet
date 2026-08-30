@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.3.0 — 2026-08-29
+
+Product and release-foundation update. Git tag: `v0.3.0`.
+
+- Establish **Grok Usage Pet** as the product identity and remove `kawaii` from
+  the executable, archive, scheduled-task, shortcut, and data-directory names.
+- Add Pip, an original pixel robot, as the complete default theme.
+- Keep Megumi Kato as an optional unofficial fan theme with a separate asset
+  notice; the MIT license applies to code, not third-party character artwork.
+- Remove the legacy `assets/` fallback and load every theme exclusively from
+  `skins/<id>/`.
+- Migrate existing state and snapshots from `GrokUsagePetKawaii` on first run
+  without overwriting newer files.
+- Add accurate privacy/security documentation, repository hygiene checks, MIT
+  licensing, Windows CI, and tag-driven GitHub Releases.
+- Publish versioned Windows x64 archives with SHA256 checksums.
+
 ## 0.2.0 — 2026-08-29
 
 Reliability release for the Kato Megumi kawaii line. Git tag: `v0.2.0`.
@@ -18,4 +35,3 @@ Reliability release for the Kato Megumi kawaii line. Git tag: `v0.2.0`.
 ## 0.1.0 — 2026-08-28
 
 First GitHub kawaii snapshot (not tagged at the time): Kato Megumi pet, `skins/`, and dual-repo backup notes.
-

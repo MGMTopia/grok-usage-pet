@@ -10,13 +10,11 @@ class SkinCatalog:
     def __init__(
         self,
         skins_dir: Path,
-        legacy_assets: Path,
         default_skin_id: str,
         default_animations: dict[str, tuple[int, int]],
         default_animation_ms: dict[str, int],
     ) -> None:
         self.skins_dir = skins_dir
-        self.legacy_assets = legacy_assets
         self.default_skin_id = default_skin_id
         self.default_animations = default_animations
         self.default_animation_ms = default_animation_ms
@@ -34,8 +32,6 @@ class SkinCatalog:
 
     def load_spec(self, skin_id: str) -> dict:
         spec = self.read_json(self.folder(skin_id) / "pet.json")
-        if not spec and skin_id == self.default_skin_id:
-            spec = self.read_json(self.legacy_assets / "pet.json")
         spec.setdefault("id", skin_id)
         spec.setdefault("displayName", skin_id)
         spec.setdefault("spritesheetPath", "spritesheet.webp")
@@ -63,13 +59,9 @@ class SkinCatalog:
     def atlas_path(self, skin_id: str) -> Path | None:
         spec = self.load_spec(skin_id)
         name = str(spec.get("spritesheetPath") or "spritesheet.webp")
-        folders = [self.folder(skin_id)]
-        if skin_id == self.default_skin_id:
-            folders.append(self.legacy_assets)
-        for folder in folders:
-            path = folder / name
-            if path.exists():
-                return path
+        path = self.folder(skin_id) / name
+        if path.exists():
+            return path
         return None
 
     def ready(self, skin_id: str) -> bool:
@@ -83,8 +75,9 @@ class SkinCatalog:
                 for path in sorted(self.skins_dir.iterdir())
                 if path.is_dir() and (path / "pet.json").exists()
             ]
-        if self.default_skin_id not in ids:
-            ids.insert(0, self.default_skin_id)
+        if self.default_skin_id in ids:
+            ids.remove(self.default_skin_id)
+        ids.insert(0, self.default_skin_id)
         result: list[dict] = []
         for skin_id in ids:
             spec = self.load_spec(skin_id)

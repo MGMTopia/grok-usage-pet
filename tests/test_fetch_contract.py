@@ -45,6 +45,25 @@ def billing_result() -> dict:
     }
 
 
+class DataDirectoryMigrationTests(unittest.TestCase):
+    def test_legacy_state_is_copied_without_overwriting_newer_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            legacy = base / "GrokUsagePetKawaii"
+            destination = base / "GrokUsagePet"
+            legacy.mkdir()
+            destination.mkdir()
+            (legacy / "pet_state.json").write_text('{"skin":"megumi-kato"}', encoding="utf-8")
+            (legacy / "usage.json").write_text('{"status":"partial"}', encoding="utf-8")
+            (destination / "usage.json").write_text('{"status":"complete"}', encoding="utf-8")
+
+            fu._migrate_legacy_data(base, destination)
+
+            self.assertIn("megumi-kato", (destination / "pet_state.json").read_text(encoding="utf-8"))
+            self.assertIn("complete", (destination / "usage.json").read_text(encoding="utf-8"))
+            self.assertFalse((destination / "pet.lock").exists())
+
+
 class SnapshotContractTests(unittest.TestCase):
     def test_grok_only_is_partial_and_usable(self) -> None:
         def get_json(url: str, _token: str) -> dict:

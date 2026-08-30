@@ -32,9 +32,8 @@ LOCK_FILE = DATA_DIR / "pet.lock"
 RAISE_FILE = DATA_DIR / "pet.raise"
 STATE_FILE = DATA_DIR / "pet_state.json"
 SKINS_DIR = fu.resource_dir() / "skins"
-LEGACY_ASSETS = fu.resource_dir() / "assets"
-DEFAULT_SKIN_ID = "megumi-kato"
-ASSETS = LEGACY_ASSETS
+DEFAULT_SKIN_ID = "original"
+ASSETS = SKINS_DIR / DEFAULT_SKIN_ID
 HOOK_FILE = fu.grok_home() / "hooks" / "usage-pet.json"
 CURSOR_HOOK_FILE = Path.home() / ".cursor" / "hooks.json"
 CURSOR_HOOK_MARKER = cursor_hooks.MARKER
@@ -159,7 +158,6 @@ except ImportError:
 
 SKIN_CATALOG = SkinCatalog(
     SKINS_DIR,
-    LEGACY_ASSETS,
     DEFAULT_SKIN_ID,
     ANIMATIONS,
     ANIM_MS,
@@ -215,8 +213,6 @@ def activate_skin(skin_id: str) -> str:
     fpr = int(look.get("framesPerRow") or 8)
     LOOK_ROWS = tuple((int(row), fpr) for row in rows)
     folder = skin_folder(skin_id)
-    if not (folder / ATLAS_NAME).exists() and skin_id == DEFAULT_SKIN_ID:
-        folder = LEGACY_ASSETS
     ASSETS = folder
     return str(spec.get("id") or skin_id)
 
@@ -342,18 +338,6 @@ def _to_photo(im):
     return ImageTk.PhotoImage(im)
 
 
-def load_sprite(name: str, height: int):
-    if Image is None or ImageTk is None:
-        return None
-    path = ASSETS / name
-    if not path.exists():
-        return None
-    im = Image.open(path).convert("RGBA")
-    ratio = height / im.height
-    im = im.resize((max(1, int(im.width * ratio)), height), Image.Resampling.NEAREST)
-    return _to_photo(im)
-
-
 def load_atlas_frames() -> dict[str, list]:
     if Image is None or ImageTk is None:
         return {}
@@ -446,11 +430,11 @@ def hook_command() -> str:
 
 
 def launch_task_name() -> str:
-    return "GrokUsagePetKawaiiLaunch" if fu.pack_id() == "kawaii" else "GrokUsagePetLaunch"
+    return "GrokUsagePetLaunch"
 
 
 def watch_task_name() -> str:
-    return "GrokUsagePetKawaiiWatch" if fu.pack_id() == "kawaii" else "GrokUsagePetWatch"
+    return "GrokUsagePetWatch"
 
 
 def launch_detached() -> None:
@@ -570,8 +554,7 @@ def create_desktop_shortcut() -> Path:
     _target, args = gui_command()
     desktop = desktop_dir()
     if os.name == "nt":
-        shortcut_name = "Grok额度宠物-可爱版.lnk" if fu.pack_id() == "kawaii" else "Grok额度宠物.lnk"
-        name = desktop / shortcut_name
+        name = desktop / "Grok额度宠物.lnk"
         arg_str = ""
         if len(args) > 1:
             arg_str = " ".join(f"'{a}'" for a in args[1:])
@@ -828,16 +811,6 @@ class UsagePet:
         loaded = load_atlas_frames()
         self._looks = list(loaded.pop("_looks", []))
         self._anims = loaded
-        if self._anims:
-            return
-        for key, name in (
-            ("idle", "pet_idle.png"),
-            ("happy", "pet_happy.png"),
-            ("low", "pet_low.png"),
-        ):
-            photo = load_sprite(name, SPRITE_H)
-            if photo is not None:
-                self._photos[key] = photo
 
     def mood(self) -> str:
         remaining = self._remainings()
