@@ -50,4 +50,4 @@ jobs:
           $notes = $section.Value -replace "(?m)^## $([regex]::Escape($version)) .*?\r?\n", ""
           $notes | Set-Content release-notes.md -Encoding utf8
           $zip = Get-Item "release/GrokUsagePet-v$version-Windows-x64.zip"
-          gh release create $env:GITHUB_REF_NAME $zip.FullName "$($zip.FullName).sha256" --verify-tag --notes-file release-notes.md
+          gh release create $env:GITHUB_REF_NAME $zip.FullName "$($zip.FullName).sha256" --verify-tag --title "Grok Usage Pet v$version" --notes-file release-notes.md
