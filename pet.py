@@ -7,11 +7,11 @@ import json
 import math
 import os
 import queue
-import re
 import shlex
 import subprocess
 import sys
 import threading
+import time
 import tkinter as tk
 from pathlib import Path
 from tkinter import Menu
@@ -25,7 +25,13 @@ else:
 import fetch_usage as fu
 import cursor_hooks
 from app_version import APP_VERSION
-from pet_view_model import build_pools, format_reset
+from pet_view_model import (
+    POOL_META,
+    build_pools,
+    format_pool_pct,
+    pool_remainings,
+    pool_tip_lines,
+)
 from skin_catalog import SkinCatalog
 
 DATA_DIR = fu.data_dir()
@@ -33,8 +39,10 @@ LOCK_FILE = DATA_DIR / "pet.lock"
 RAISE_FILE = DATA_DIR / "pet.raise"
 STATE_FILE = DATA_DIR / "pet_state.json"
 SKINS_DIR = fu.resource_dir() / "skins"
+LEGACY_ASSETS = fu.resource_dir() / "assets"
 DEFAULT_SKIN_ID = "original"
-ASSETS = SKINS_DIR / DEFAULT_SKIN_ID
+DEFAULT_THEME_PRESET = "soft"
+ASSETS = LEGACY_ASSETS
 HOOK_FILE = fu.grok_home() / "hooks" / "usage-pet.json"
 CURSOR_HOOK_FILE = Path.home() / ".cursor" / "hooks.json"
 CURSOR_HOOK_MARKER = cursor_hooks.MARKER
@@ -43,13 +51,20 @@ CHROMA = "#ff00ff"
 CHROMA_RGB = (255, 0, 255)
 REFRESH_MS = 60_000
 TICK_MS = 40
+MAX_ANIM_ELAPSED_MS = 250
+LOOK_SECTORS = 16
+LOOK_STEP_DEGREES = 360.0 / LOOK_SECTORS
+LOOK_TRANSITION_MS = 55
+LOOK_SECTOR_HYSTERESIS_DEGREES = 2.5
+LOOK_ENTER_DISTANCE = (48, 330)
+LOOK_STAY_DISTANCE = (32, 360)
 COLLAPSE_MS = 380
+IDLE_WAVE_S = 300.0
 CELL_W = 192
 CELL_H = 208
 SPRITE_W = 192
 SPRITE_H = 208
-# "classic" is the previous dark quota UI; kept as a compatibility preset.
-DEFAULT_THEME_PRESET = "soft"
+# Skin manifests pick a preset via theme.preset. "classic" is compatibility-only.
 STYLES = {
     "classic": {
         "row_h": 38,
@@ -64,6 +79,8 @@ STYLES = {
         "bar_ok": "#3ddc97",
         "bar_mid": "#f5c542",
         "bar_low": "#ff6b6b",
+        "bar_layer_light": "#86e0b8",
+        "bar_layer_dark": "#1f9a64",
         "pct": "#ffffff",
         "tip_fill": "#16161c",
         "tip_outline": "#5eead4",
@@ -79,54 +96,18 @@ STYLES = {
         "settings_text": "#f4f4f5",
         "settings_select": "#111111",
         "settings_active": "#ffffff",
+        "muted": "#9aa0a6",
         "radius": 0,
-        "bubble_style": "classic",
-        "bar_style": "square",
-        "tip_style": "square",
-        "decoration": "none",
         "accent": "#5eead4",
-        "inner": "#111111",
+        "inner": "#16161c",
+        "decoration": "none",
+        "bar_style": "square",
+        "bubble_style": "classic",
+        "tip_style": "square",
     },
-    "tech": {
+    "kawaii": {
         "row_h": 44,
-        "bubble_w": 276,
-        "bubble_top": 20,
-        "bubble_bottom": 14,
-        "bubble_fill": "#10243a",
-        "bubble_outline": "#45dff2",
-        "bubble_shadow": "#071522",
-        "label": "#a9c9d8",
-        "label_hot": "#72f1ff",
-        "bar_track": "#203b52",
-        "bar_ok": "#36d9c4",
-        "bar_mid": "#f0bd57",
-        "bar_low": "#ff6688",
-        "pct": "#d9f8ff",
-        "tip_fill": "#0d1d30",
-        "tip_outline": "#45dff2",
-        "tip_title": "#72f1ff",
-        "tip_text": "#d7eaf2",
-        "spinner": "#72f1ff",
-        "font": ("Microsoft YaHei UI", 9),
-        "font_title": ("Microsoft YaHei UI", 9, "bold"),
-        "font_ui": ("Microsoft YaHei UI", 10),
-        "settings_bg": "#0b1b2b",
-        "settings_fg": "#d7eaf2",
-        "settings_muted": "#7898aa",
-        "settings_text": "#d7eaf2",
-        "settings_select": "#17334a",
-        "settings_active": "#72f1ff",
-        "radius": 10,
-        "accent": "#45dff2",
-        "inner": "#10243a",
-        "bubble_style": "rounded",
-        "bar_style": "rounded",
-        "tip_style": "rounded",
-        "decoration": "circuit",
-    },
-    "soft": {
-        "row_h": 44,
-        "bubble_w": 276,
+        "bubble_w": 292,
         "bubble_top": 20,
         "bubble_bottom": 14,
         "bubble_fill": "#fff7f2",
@@ -138,6 +119,8 @@ STYLES = {
         "bar_ok": "#e07a7a",
         "bar_mid": "#e0b36a",
         "bar_low": "#c94b4b",
+        "bar_layer_light": "#e8a49a",
+        "bar_layer_dark": "#c4453c",
         "pct": "#7a5348",
         "tip_fill": "#fffaf6",
         "tip_outline": "#e4b6ad",
@@ -153,17 +136,59 @@ STYLES = {
         "settings_text": "#5a4038",
         "settings_select": "#f4e0d8",
         "settings_active": "#c4453c",
+        "muted": "#a07a72",
         "radius": 18,
         "accent": "#c94b4b",
         "inner": "#ffffff",
-        "bubble_style": "rounded",
-        "bar_style": "rounded",
-        "tip_style": "rounded",
         "decoration": "bow",
+        "bar_style": "rounded",
+        "bubble_style": "rounded",
+        "tip_style": "rounded",
     },
 }
-ACTIVE_STYLE = dict(STYLES[DEFAULT_THEME_PRESET])
-THEME_COLOR_KEYS = {
+STYLES["soft"] = dict(STYLES["kawaii"])
+STYLES["soft"]["radius"] = 28
+STYLES["tech"] = {
+    "row_h": 44,
+    "bubble_w": 292,
+    "bubble_top": 20,
+    "bubble_bottom": 14,
+    "bubble_fill": "#10243A",
+    "bubble_outline": "#2A6B7A",
+    "bubble_shadow": "#0A1826",
+    "label": "#9ED8E0",
+    "label_hot": "#45DFF2",
+    "bar_track": "#163044",
+    "bar_ok": "#3DDC97",
+    "bar_mid": "#E0B36A",
+    "bar_low": "#E05A5A",
+    "bar_layer_light": "#7BE7C4",
+    "bar_layer_dark": "#2BB07A",
+    "pct": "#D7F6FA",
+    "tip_fill": "#10243A",
+    "tip_outline": "#45DFF2",
+    "tip_title": "#45DFF2",
+    "tip_text": "#D7F6FA",
+    "spinner": "#45DFF2",
+    "font": ("Microsoft YaHei UI", 9),
+    "font_title": ("Microsoft YaHei UI", 9, "bold"),
+    "font_ui": ("Microsoft YaHei UI", 10),
+    "settings_bg": "#0C1C2A",
+    "settings_fg": "#D7F6FA",
+    "settings_muted": "#7AA3A8",
+    "settings_text": "#D7F6FA",
+    "settings_select": "#163044",
+    "settings_active": "#45DFF2",
+    "muted": "#7AA3A8",
+    "radius": 28,
+    "accent": "#45DFF2",
+    "inner": "#163044",
+    "decoration": "circuit",
+    "bar_style": "rounded",
+    "bubble_style": "rounded",
+    "tip_style": "rounded",
+}
+_THEME_COLOR_KEYS = {
     "bubbleFill": "bubble_fill",
     "bubbleOutline": "bubble_outline",
     "bubbleShadow": "bubble_shadow",
@@ -180,28 +205,32 @@ THEME_COLOR_KEYS = {
     "tipText": "tip_text",
     "spinner": "spinner",
     "accent": "accent",
+    "inner": "inner",
     "settingsBackground": "settings_bg",
     "settingsForeground": "settings_fg",
     "settingsMuted": "settings_muted",
-    "settingsText": "settings_text",
-    "settingsSelect": "settings_select",
-    "settingsActive": "settings_active",
-    "inner": "inner",
+    "muted": "muted",
+    "barLayerLight": "bar_layer_light",
+    "barLayerDark": "bar_layer_dark",
 }
-THEME_STYLE_KEYS = {
-    "bubbleStyle": ("bubble_style", {"classic", "rounded"}),
-    "barStyle": ("bar_style", {"square", "rounded"}),
-    "tipStyle": ("tip_style", {"square", "rounded"}),
+_THEME_ENUM_KEYS = {
+    "bubbleStyle": ("bubble_style", {"rounded", "classic"}),
+    "barStyle": ("bar_style", {"rounded", "square"}),
+    "tipStyle": ("tip_style", {"rounded", "square"}),
     "decoration": ("decoration", {"none", "bow", "circuit"}),
 }
-BUBBLE_ROWS = ("sg", "bot", "cm", "om")
-ROW_LABELS = {
-    "sg": "SuperGrok",
-    "bot": "Grok Bot",
-    "cm": "Cursor 模型",
-    "om": "其他模型",
+_SESSION_LAYOUT_KEYS = ("pinned", "expanded")
+_ACTIVE_STYLE: dict | None = None
+_THEME_PRESETS = ("tech", "soft", "classic")
+BUBBLE_ROWS = ("sg", "bot", "cm", "om", "cx")
+ROW_LABELS = {key: POOL_META[key]["title"] for key in BUBBLE_ROWS}
+DEFAULT_ENABLED = {
+    "sg": True,
+    "bot": True,
+    "cm": True,
+    "om": True,
+    "cx": True,
 }
-DEFAULT_ENABLED = {"sg": True, "bot": True, "cm": True, "om": True}
 ATLAS_NAME = "spritesheet.webp"
 ATLAS_SIZE = (1536, 2288)
 ANIMATIONS = {
@@ -226,7 +255,7 @@ ANIM_MS = {
     "running": 140,
     "review": 200,
 }
-ONESHOT_ANIMS = {"jumping", "waving", "failed"}
+ONESHOT_ANIMS = {"jumping", "waving", "failed", "waiting"}
 LOOK_ROWS = ((9, 8), (10, 8))
 
 try:
@@ -242,6 +271,55 @@ SKIN_CATALOG = SkinCatalog(
     ANIMATIONS,
     ANIM_MS,
 )
+
+
+def _frame_clock_steps(accumulator_ms: float, elapsed_ms: float, delay_ms: int) -> tuple[int, float]:
+    """Return due animation steps while preserving sub-frame timing remainder."""
+    delay = max(1, int(delay_ms))
+    elapsed = max(0.0, min(float(elapsed_ms), float(MAX_ANIM_ELAPSED_MS)))
+    total = max(0.0, float(accumulator_ms)) + elapsed
+    steps = int(total // delay)
+    return steps, total - steps * delay
+
+
+def quota_fetch_oneshot(
+    remainings: list[float],
+    *,
+    error: bool = False,
+    has_snap: bool = True,
+) -> str | None:
+    """Pick the one-shot to play after a usable quota fetch."""
+    worst = min(remainings) if remainings else None
+    if worst is not None and worst < 20:
+        return "failed"
+    if not remainings and error and has_snap:
+        return "failed"
+    if worst is not None and worst > 20:
+        return "waiting"
+    return None
+
+
+def idle_wave_due(last_activity: float, now: float, idle_s: float = IDLE_WAVE_S) -> bool:
+    return (now - last_activity) >= idle_s
+
+
+def _angular_distance_degrees(left: float, right: float) -> float:
+    """Smallest unsigned distance between two headings."""
+    return abs((float(left) - float(right) + 180.0) % 360.0 - 180.0)
+
+
+def _step_circular_index(current: int, target: int, size: int = LOOK_SECTORS) -> int:
+    """Move one slot toward target using the shortest path around a ring."""
+    if size <= 0:
+        raise ValueError("size must be positive")
+    current %= size
+    target %= size
+    delta = (target - current) % size
+    if delta == 0:
+        return current
+    if delta > size // 2:
+        return (current - 1) % size
+    return (current + 1) % size
 
 
 def skin_folder(skin_id: str) -> Path:
@@ -265,7 +343,7 @@ def list_skins() -> list[dict]:
 
 
 def activate_skin(skin_id: str) -> str:
-    global ASSETS, CELL_W, CELL_H, SPRITE_W, SPRITE_H, ATLAS_SIZE, ATLAS_NAME, ANIMATIONS, ANIM_MS, LOOK_ROWS, ACTIVE_STYLE
+    global ASSETS, CELL_W, CELL_H, SPRITE_W, SPRITE_H, ATLAS_SIZE, ATLAS_NAME, ANIMATIONS, ANIM_MS, LOOK_ROWS, _ACTIVE_STYLE
     if not skin_ready(skin_id):
         skin_id = DEFAULT_SKIN_ID
     spec = load_skin_spec(skin_id)
@@ -293,33 +371,73 @@ def activate_skin(skin_id: str) -> str:
     fpr = int(look.get("framesPerRow") or 8)
     LOOK_ROWS = tuple((int(row), fpr) for row in rows)
     folder = skin_folder(skin_id)
+    if not (folder / ATLAS_NAME).exists() and skin_id == DEFAULT_SKIN_ID:
+        folder = LEGACY_ASSETS
     ASSETS = folder
-    ACTIVE_STYLE = resolve_theme(spec.get("theme"))
+    _ACTIVE_STYLE = resolve_theme(spec.get("theme"))
     return str(spec.get("id") or skin_id)
 
 
-def resolve_theme(raw: object) -> dict:
-    theme = raw if isinstance(raw, dict) else {}
-    preset = str(theme.get("preset") or DEFAULT_THEME_PRESET).strip().lower()
-    if preset not in STYLES:
-        preset = DEFAULT_THEME_PRESET
-    resolved = dict(STYLES[preset])
-    for public_key, internal_key in THEME_COLOR_KEYS.items():
-        value = theme.get(public_key)
-        if isinstance(value, str) and re.fullmatch(r"#[0-9a-fA-F]{6}", value):
-            resolved[internal_key] = value
-    for public_key, (internal_key, allowed) in THEME_STYLE_KEYS.items():
-        value = str(theme.get(public_key) or "").strip().lower()
-        if value in allowed:
-            resolved[internal_key] = value
-    radius = theme.get("radius")
-    if isinstance(radius, (int, float)) and not isinstance(radius, bool):
-        resolved["radius"] = max(0, min(28, int(radius)))
+def _parse_hex_color(value: object) -> str | None:
+    if not isinstance(value, str) or len(value) != 7 or not value.startswith("#"):
+        return None
+    body = value[1:]
+    if all(ch in "0123456789abcdefABCDEF" for ch in body):
+        return value
+    return None
+
+
+def _blend_hex(left: str, right: str, amount: float) -> str:
+    src = _parse_hex_color(left)
+    dst = _parse_hex_color(right)
+    if src is None or dst is None:
+        return left
+    t = max(0.0, min(1.0, float(amount)))
+    mixed = []
+    for i in (1, 3, 5):
+        a = int(src[i : i + 2], 16)
+        b = int(dst[i : i + 2], 16)
+        mixed.append(int(a + (b - a) * t))
+    return f"#{mixed[0]:02x}{mixed[1]:02x}{mixed[2]:02x}"
+
+
+def resolve_theme(theme: object) -> dict:
+    payload = theme if isinstance(theme, dict) else {}
+    preset_name = payload.get("preset")
+    if preset_name not in _THEME_PRESETS:
+        preset_name = DEFAULT_THEME_PRESET
+    resolved = dict(STYLES[preset_name])
+    for json_key, (style_key, allowed) in _THEME_ENUM_KEYS.items():
+        raw = payload.get(json_key)
+        if isinstance(raw, str) and raw in allowed:
+            resolved[style_key] = raw
+    for json_key, style_key in _THEME_COLOR_KEYS.items():
+        parsed = _parse_hex_color(payload.get(json_key))
+        if parsed is not None:
+            resolved[style_key] = parsed
+    radius = payload.get("radius")
+    if radius is not None:
+        try:
+            resolved["radius"] = max(0, min(28, int(radius)))
+        except (TypeError, ValueError):
+            pass
     return resolved
 
 
 def style() -> dict:
-    return ACTIVE_STYLE
+    return _ACTIVE_STYLE if _ACTIVE_STYLE is not None else resolve_theme({})
+
+
+def _apply_ui_fonts(family: str) -> None:
+    fonts = {
+        "font": (family, 9),
+        "font_title": (family, 9, "bold"),
+        "font_ui": (family, 10),
+    }
+    for name in ("kawaii", "soft", "tech"):
+        STYLES[name].update(fonts)
+    if _ACTIVE_STYLE is not None:
+        _ACTIVE_STYLE.update(fonts)
 
 
 def pick_ui_fonts(root: tk.Tk) -> None:
@@ -331,15 +449,7 @@ def pick_ui_fonts(root: tk.Tk) -> None:
             break
     if not cute:
         cute = "Microsoft YaHei UI"
-    for preset in STYLES.values():
-        size = 8 if preset.get("bubble_style") == "classic" else 9
-        preset["font"] = (cute, size)
-        preset["font_title"] = (cute, size, "bold")
-        preset["font_ui"] = (cute, 10)
-    size = 8 if ACTIVE_STYLE.get("bubble_style") == "classic" else 9
-    ACTIVE_STYLE["font"] = (cute, size)
-    ACTIVE_STYLE["font_title"] = (cute, size, "bold")
-    ACTIVE_STYLE["font_ui"] = (cute, 10)
+    _apply_ui_fonts(cute)
 
 
 def canvas_round_rect(canvas: tk.Canvas, x1: float, y1: float, x2: float, y2: float, r: float = 12, **kwargs):
@@ -411,23 +521,24 @@ def claim_singleton() -> bool:
 
 
 def load_state() -> dict:
+    raw: dict = {}
     if STATE_FILE.exists():
         try:
-            data = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+            loaded = json.loads(STATE_FILE.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
-            return {}
-        if isinstance(data, dict):
-            # Fixed-open is a session interaction. Older builds persisted both
-            # fields, which could make the quota card look permanently stuck.
-            data.pop("expanded", None)
-            data.pop("pinned", None)
-            return data
-    return {}
+            loaded = {}
+        if isinstance(loaded, dict):
+            raw = loaded
+    for key in _SESSION_LAYOUT_KEYS:
+        raw.pop(key, None)
+    return raw
 
 
 def save_state(data: dict) -> None:
     current = load_state()
     current.update(data)
+    for key in _SESSION_LAYOUT_KEYS:
+        current.pop(key, None)
     STATE_FILE.write_text(json.dumps(current, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
@@ -437,6 +548,8 @@ def load_enabled() -> dict[str, bool]:
     for key in BUBBLE_ROWS:
         if key in raw:
             enabled[key] = bool(raw[key])
+    if "cx" not in raw and ("cx5" in raw or "cxw" in raw):
+        enabled["cx"] = bool(raw.get("cx5", True)) or bool(raw.get("cxw", True))
     return enabled
 
 
@@ -449,6 +562,18 @@ def _to_photo(im):
         bg.alpha_composite(im)
         return ImageTk.PhotoImage(bg.convert("RGB"))
     return ImageTk.PhotoImage(im)
+
+
+def load_sprite(name: str, height: int):
+    if Image is None or ImageTk is None:
+        return None
+    path = ASSETS / name
+    if not path.exists():
+        return None
+    im = Image.open(path).convert("RGBA")
+    ratio = height / im.height
+    im = im.resize((max(1, int(im.width * ratio)), height), Image.Resampling.NEAREST)
+    return _to_photo(im)
 
 
 def load_atlas_frames() -> dict[str, list]:
@@ -543,14 +668,20 @@ def hook_command() -> str:
 
 
 def launch_task_name() -> str:
-    return "GrokUsagePetLaunch"
+    return "GrokUsagePetKawaiiLaunch" if fu.pack_id() == "kawaii" else "GrokUsagePetLaunch"
 
 
 def watch_task_name() -> str:
-    return "GrokUsagePetWatch"
+    return "GrokUsagePetKawaiiWatch" if fu.pack_id() == "kawaii" else "GrokUsagePetWatch"
 
 
 def launch_detached() -> None:
+    import watch_apps
+
+    procs = watch_apps.running_procs()
+    if not watch_apps.allow_autostart(procs):
+        return
+    watch_apps.clear_dismissed()
     if os.name == "nt":
         flags = CREATE_NO_WINDOW
         ran = subprocess.run(
@@ -652,6 +783,25 @@ def uninstall_cursor_hook() -> None:
 
 
 def desktop_dir() -> Path:
+    if os.name == "nt":
+        try:
+            out = subprocess.check_output(
+                [
+                    "powershell",
+                    "-NoProfile",
+                    "-Command",
+                    "[Environment]::GetFolderPath('Desktop')",
+                ],
+                text=True,
+                encoding="utf-8",
+                errors="ignore",
+                creationflags=CREATE_NO_WINDOW,
+            ).strip()
+            known = Path(out)
+            if known.exists():
+                return known
+        except Exception:
+            pass
     home = Path.home()
     for candidate in (
         home / "Desktop",
@@ -663,31 +813,43 @@ def desktop_dir() -> Path:
     return home / "Desktop"
 
 
+def _ps_quote(value: str) -> str:
+    return "'" + str(value).replace("'", "''") + "'"
+
+
+def _shortcut_argument_string(parts: list[str]) -> str:
+    bits: list[str] = []
+    for part in parts:
+        if any(ch.isspace() for ch in part) or any(ch in part for ch in "&()[]{}^=;!'+,`~"):
+            bits.append('"' + part.replace('"', '\\"') + '"')
+        else:
+            bits.append(part)
+    return " ".join(bits)
+
+
 def create_desktop_shortcut() -> Path:
     _target, args = gui_command()
     desktop = desktop_dir()
     if os.name == "nt":
-        name = desktop / "Grok额度宠物.lnk"
-        arg_str = ""
-        if len(args) > 1:
-            arg_str = " ".join(f"'{a}'" for a in args[1:])
+        shortcut_name = "Grok额度宠物-可爱版.lnk" if fu.pack_id() == "kawaii" else "Grok额度宠物.lnk"
+        name = desktop / shortcut_name
+        arg_str = _shortcut_argument_string(args[1:])
         icon = ASSETS / "app.ico"
-        icon_ps = f"; $s.IconLocation = '{icon.resolve()},0'" if icon.exists() else ""
-        cmd = (
-            "$s = (New-Object -ComObject WScript.Shell).CreateShortcut('"
-            + str(name)
-            + "'); $s.TargetPath = '"
-            + _target
-            + "'; $s.Arguments = \""
-            + arg_str.replace('"', "")
-            + "\"; $s.WorkingDirectory = '"
-            + str(fu.install_dir())
-            + "'; $s.WindowStyle = 1; $s.Description = 'Grok remaining usage pet'"
-            + icon_ps
-            + "; $s.Save()"
+        icon_line = ""
+        if icon.exists():
+            icon_line = f"$s.IconLocation = {_ps_quote(str(icon.resolve()) + ',0')};"
+        script = (
+            f"$s = (New-Object -ComObject WScript.Shell).CreateShortcut({_ps_quote(str(name))});"
+            f"$s.TargetPath = {_ps_quote(_target)};"
+            f"$s.Arguments = {_ps_quote(arg_str)};"
+            f"$s.WorkingDirectory = {_ps_quote(str(fu.install_dir()))};"
+            "$s.WindowStyle = 1;"
+            "$s.Description = 'Grok remaining usage pet';"
+            f"{icon_line}"
+            "$s.Save()"
         )
         subprocess.run(
-            ["powershell", "-NoProfile", "-Command", cmd],
+            ["powershell", "-NoProfile", "-Command", script],
             check=True,
             creationflags=CREATE_NO_WINDOW,
         )
@@ -709,12 +871,9 @@ class UsagePet:
         self._preview_mode = preview_snapshot is not None
         self.snap: dict | None = preview_snapshot
         self.error: str | None = None
-        state = load_state()
-        self.pinned = self._preview_mode
-        self.skin_id = activate_skin(str(state.get("skin") or DEFAULT_SKIN_ID))
+        self.pinned = True if self._preview_mode else False
+        self.skin_id = activate_skin(str(load_state().get("skin") or DEFAULT_SKIN_ID))
         self.enabled = load_enabled()
-        if not self._preview_mode and STATE_FILE.exists():
-            save_state({})
         self._settings: tk.Toplevel | None = None
         self._drag = None
         self._drag_dx = 0
@@ -728,10 +887,13 @@ class UsagePet:
         self._looks: list = []
         self._anim = "idle"
         self._frame = 0
-        self._frame_acc = 0
+        self._frame_acc = 0.0
+        self._last_anim_at = time.monotonic()
+        self._look_target: int | None = None
+        self._look_frame: int | None = None
+        self._look_acc = 0.0
         self._oneshot: str | None = None
-        self._waved = self._preview_mode
-        self._failed_played = False
+        self._last_activity = time.monotonic()
         self._hover: str | None = None
         self._hover_open = False
         self._hover_armed = False
@@ -770,8 +932,7 @@ class UsagePet:
 
         self.menu = Menu(self.root, tearoff=0)
         self.menu.add_command(label="刷新额度", command=self.refresh_now)
-        self.menu.add_command(label="固定额度条（本次运行）", command=self.toggle_expand)
-        self._pin_menu_index = 1
+        self.menu.add_command(label="固定 / 取消固定额度", command=self.toggle_expand)
         self.menu.add_command(label="设置…", command=self.open_settings)
         self.menu.add_command(label="创建桌面快捷方式", command=self.install_shortcut)
         self.menu.add_separator()
@@ -795,6 +956,8 @@ class UsagePet:
 
         self.root.protocol("WM_DELETE_WINDOW", self.quit)
         self._load_sprites()
+        self._play_oneshot("waving")
+        self._note_activity()
         self._apply_chrome()
         self._apply_layout(initial=True)
         self.draw()
@@ -928,6 +1091,16 @@ class UsagePet:
         loaded = load_atlas_frames()
         self._looks = list(loaded.pop("_looks", []))
         self._anims = loaded
+        if self._anims:
+            return
+        for key, name in (
+            ("idle", "pet_idle.png"),
+            ("happy", "pet_happy.png"),
+            ("low", "pet_low.png"),
+        ):
+            photo = load_sprite(name, SPRITE_H)
+            if photo is not None:
+                self._photos[key] = photo
 
     def mood(self) -> str:
         remaining = self._remainings()
@@ -940,9 +1113,24 @@ class UsagePet:
             return "happy"
         return "idle"
 
+    def _note_activity(self) -> None:
+        self._last_activity = time.monotonic()
+
+    def _maybe_idle_wave(self, now: float) -> None:
+        if self._drag or self._oneshot or self._closing:
+            return
+        if not idle_wave_due(self._last_activity, now):
+            return
+        self._play_oneshot("waving")
+        self._last_activity = now
+
     def _play_oneshot(self, name: str) -> None:
-        if name in self._anims:
-            self._oneshot = name
+        if name not in self._anims:
+            return
+        self._oneshot = name
+        if self._anim == name:
+            self._frame = 0
+            self._frame_acc = 0.0
 
     def _look_index(self) -> int | None:
         if len(self._looks) < 16:
@@ -960,12 +1148,19 @@ class UsagePet:
         dx = px - cx
         dy = py - cy
         dist = math.hypot(dx, dy)
-        if dist < 40 or dist > 340:
+        active = self._anim == "look" and self._look_target is not None
+        min_dist, max_dist = LOOK_STAY_DISTANCE if active else LOOK_ENTER_DISTANCE
+        if dist < min_dist or dist > max_dist:
             return None
         ang = math.degrees(math.atan2(dx, -dy))
         if ang < 0:
             ang += 360
-        return int((ang + 11.25) / 22.5) % 16
+        if active:
+            target_center = self._look_target * LOOK_STEP_DEGREES
+            hold_angle = LOOK_STEP_DEGREES / 2 + LOOK_SECTOR_HYSTERESIS_DEGREES
+            if _angular_distance_degrees(ang, target_center) <= hold_angle:
+                return self._look_target
+        return int((ang + LOOK_STEP_DEGREES / 2) / LOOK_STEP_DEGREES) % LOOK_SECTORS
 
     def _current_anim(self) -> str:
         if self._drag:
@@ -974,25 +1169,16 @@ class UsagePet:
             if self._drag_dx > 0 and "running-right" in self._anims:
                 return "running-right"
             return self._anim if self._anim in ("running-left", "running-right") else "idle"
-        if self.snap is None and "waiting" in self._anims:
-            return "waiting"
-        remaining = self._remainings()
-        worst = min(remaining) if remaining else None
-        low = (worst is not None and worst < 20) or (
-            not remaining and self.error and self.snap is not None
-        )
-        if not low:
-            self._failed_played = False
-        elif not self._failed_played:
-            self._failed_played = True
-            self._play_oneshot("failed")
         if self._oneshot and self._oneshot in self._anims:
             return self._oneshot
+        if self.snap is None and "waiting" in self._anims:
+            return "waiting"
         if self._busy and "running" in self._anims:
             return "running"
         if self.bars_visible() and "review" in self._anims:
             return "review"
-        if self._look_index() is not None:
+        self._look_target = self._look_index()
+        if self._look_target is not None:
             return "look"
         if "idle" in self._anims:
             return "idle"
@@ -1000,9 +1186,8 @@ class UsagePet:
 
     def _current_photo(self):
         if self._anim == "look":
-            idx = self._look_index()
-            if idx is not None:
-                return self._looks[idx]
+            if self._look_frame is not None and len(self._looks) >= LOOK_SECTORS:
+                return self._looks[self._look_frame % len(self._looks)]
         frames = self._anims.get(self._anim) or self._anims.get("idle") or []
         if frames:
             return frames[self._frame % len(frames)]
@@ -1031,9 +1216,7 @@ class UsagePet:
         vals: list[float] = []
         pools = self._pools()
         for key in self.visible_rows():
-            remaining = pools[key].get("remaining")
-            if remaining is not None:
-                vals.append(float(remaining))
+            vals.extend(pool_remainings(pools[key]))
         return vals
 
     def _reveal_bars(self, *, jump: bool = True) -> None:
@@ -1046,6 +1229,7 @@ class UsagePet:
     def on_enter(self, event) -> None:
         if not self._hover_armed:
             return
+        self._note_activity()
         self._cancel_collapse()
         if self._drag:
             return
@@ -1057,6 +1241,7 @@ class UsagePet:
     def on_motion(self, event) -> None:
         if not self._hover_armed:
             return
+        self._note_activity()
         self._mouse = (event.x, event.y)
         self._cancel_collapse()
         if self._drag:
@@ -1116,6 +1301,7 @@ class UsagePet:
         return None
 
     def on_press(self, event) -> None:
+        self._note_activity()
         self._drag = (event.x_root, event.y_root, self.root.winfo_x(), self.root.winfo_y())
         self._last_drag_x = event.x_root
         self._drag_dx = 0
@@ -1123,6 +1309,7 @@ class UsagePet:
     def on_drag(self, event) -> None:
         if not self._drag:
             return
+        self._note_activity()
         sx, sy, wx, wy = self._drag
         dx = event.x_root - self._last_drag_x
         if abs(dx) >= 2:
@@ -1139,22 +1326,26 @@ class UsagePet:
         self.persist()
 
     def on_menu(self, event) -> None:
+        self._note_activity()
         self._cancel_collapse()
-        self.menu.entryconfigure(
-            self._pin_menu_index,
-            label="取消固定额度条" if self.pinned else "固定额度条（本次运行）",
-        )
         if not self._hover_open:
             self._reveal_bars(jump=False)
             self.draw()
         try:
             self.menu.tk_popup(event.x_root, event.y_root)
         finally:
-            self.menu.grab_release()
-            if not self.pinned:
-                self._schedule_collapse()
+            try:
+                self.menu.grab_release()
+            except tk.TclError:
+                pass
+            if not self._closing and not self.pinned:
+                try:
+                    self._schedule_collapse()
+                except tk.TclError:
+                    pass
 
     def toggle_expand(self) -> None:
+        self._note_activity()
         self.pinned = not self.pinned
         if self.pinned:
             self._reveal_bars()
@@ -1166,6 +1357,7 @@ class UsagePet:
         self.draw()
 
     def open_settings(self) -> None:
+        self._note_activity()
         if self._settings is not None and self._settings.winfo_exists():
             self._sync_setting_vars()
             self._settings.deiconify()
@@ -1244,9 +1436,15 @@ class UsagePet:
                 _cv.delete("all")
                 on = bool(_var.get())
                 fill = ui.get("accent", "#c94b4b") if on else ui["bar_track"]
-                canvas_round_rect(_cv, 2, 4, 44, 22, 9, fill=fill, outline="")
-                knob = 33 if on else 13
-                _cv.create_oval(knob - 8, 5, knob + 8, 21, fill="#ffffff", outline="")
+                rounded = ui.get("bar_style") != "square"
+                if rounded:
+                    canvas_round_rect(_cv, 2, 4, 44, 22, 9, fill=fill, outline="")
+                    knob = 33 if on else 13
+                    _cv.create_oval(knob - 8, 5, knob + 8, 21, fill="#ffffff", outline="")
+                else:
+                    _cv.create_rectangle(2, 4, 44, 22, fill=fill, outline="")
+                    knob = 30 if on else 10
+                    _cv.create_rectangle(knob - 6, 6, knob + 10, 20, fill="#ffffff", outline="")
 
             def click(_event=None, _var=var, _cmd=command) -> None:
                 _var.set(not bool(_var.get()))
@@ -1291,7 +1489,7 @@ class UsagePet:
             bind(sub)
             self._skin_chips[sid] = chip
         self._paint_skin_chips()
-        hint("皮肤会同时切换角色、额度卡、提示框与设置配色。")
+        hint("形象决定配色和装饰：Original 科技蓝，加藤惠暖色。每条额度的内容和布局相同。")
 
         heading("额度条")
         inner = card()
@@ -1299,8 +1497,9 @@ class UsagePet:
         for key in BUBBLE_ROWS:
             var = tk.BooleanVar(value=self.enabled.get(key, True))
             self._enabled_vars[key] = var
-            add_switch(inner, ROW_LABELS[key], var, lambda k=key: self._on_toggle(k))
-        hint("关掉的条目不再显示，也不参与表情判断。")
+            meta = POOL_META[key]
+            add_switch(inner, f"{meta['title']}  {meta['tag']}", var, lambda k=key: self._on_toggle(k))
+        hint("每条都是：名称、周期、剩余。悬停看重置时间。关掉的条目不显示，也不参与表情。Codex 深色 5 小时、浅色周额度。")
 
         heading("随软件启动")
         inner = card()
@@ -1325,9 +1524,12 @@ class UsagePet:
 
     def _pick_skin(self, skin_id: str, ready: bool) -> None:
         self._skin_var.set(skin_id)
-        changed = self._on_skin()
-        if not changed:
+        if not ready:
+            self._on_skin()
             self._paint_skin_chips()
+            return
+        self._on_skin()
+        self._paint_skin_chips()
 
     def _sync_setting_vars(self) -> None:
         if not hasattr(self, "_grok_start_var"):
@@ -1342,10 +1544,10 @@ class UsagePet:
             paint()
         self._paint_skin_chips()
 
-    def _on_skin(self) -> bool:
+    def _on_skin(self) -> None:
         want = str(self._skin_var.get() or "")
         if not want or want == self.skin_id:
-            return False
+            return
         if not skin_ready(want):
             self._skin_var.set(self.skin_id)
             self._toast(
@@ -1353,32 +1555,33 @@ class UsagePet:
                 + str(skin_folder(want))
                 + "\n（说明见 素材说明.txt）"
             )
-            return False
-        reopen_settings = self._settings is not None and self._settings.winfo_exists()
+            return
         self.skin_id = activate_skin(want)
-        self._oneshot = None
-        self._waved = False
-        self._failed_played = False
         self._photos.pop("_app_icon", None)
         self._load_sprites()
+        self._play_oneshot("waving")
+        self._note_activity()
         self._apply_app_icon(self.root)
-        if reopen_settings:
+        settings_geom = None
+        if self._settings is not None and self._settings.winfo_exists():
+            settings_geom = self._settings.geometry()
             self._settings.destroy()
             self._settings = None
-            self._skin_chips = {}
         self.persist()
         self._apply_layout()
         self.draw()
-        if reopen_settings:
-            self.root.after_idle(self.open_settings)
+        if settings_geom:
+            self.open_settings()
+            if self._settings is not None and self._settings.winfo_exists():
+                self._settings.geometry(settings_geom)
         else:
             self._paint_skin_chips()
-        return True
 
     def _on_toggle(self, key: str) -> None:
         var = self._enabled_vars.get(key)
         if var is None:
             return
+        self._note_activity()
         self.enabled[key] = bool(var.get())
         self.persist()
         self._apply_layout()
@@ -1416,6 +1619,12 @@ class UsagePet:
         self._closing = True
         if not self._preview_mode:
             self.persist()
+            try:
+                import watch_apps
+
+                watch_apps.mark_dismissed()
+            except Exception:
+                pass
         try:
             if LOCK_FILE.exists() and LOCK_FILE.read_text(encoding="utf-8").strip() == str(os.getpid()):
                 LOCK_FILE.unlink()
@@ -1524,41 +1733,72 @@ class UsagePet:
         self.root.after(100, self._poll_fetch_results)
 
     def _apply_fetch_result(self, snap: dict | None, err: str | None) -> None:
-        first = self.snap is None
         self._busy = False
         if snap is not None and fu.snapshot_is_usable(snap):
             self.snap = snap
             self.error = err
+            reaction = quota_fetch_oneshot(
+                self._remainings(),
+                error=bool(self.error),
+                has_snap=self.snap is not None,
+            )
+            if reaction and self._oneshot != "waving":
+                self._play_oneshot(reaction)
         else:
             self.error = err
-        if first and snap is not None and fu.snapshot_is_usable(snap) and not self._waved:
-            vals = self._remainings()
-            worst = min(vals) if vals else None
-            if worst is None or worst >= 20:
-                self._play_oneshot("waving")
-            self._waved = True
         self._apply_layout()
         self.draw()
 
     def animate(self) -> None:
         self._tick += 1
+        now = time.monotonic()
+        elapsed_ms = (now - self._last_anim_at) * 1000.0
+        self._last_anim_at = now
+        self._maybe_idle_wave(now)
         name = self._current_anim()
         frames = self._anims.get(name) or []
         if name != self._anim:
             self._anim = name
             self._frame = 0
-            self._frame_acc = 0
+            self._frame_acc = 0.0
+            self._look_acc = 0.0
+            if name == "look":
+                self._look_frame = self._look_target
         else:
-            self._frame_acc += TICK_MS
-            delay = ANIM_MS.get(name, 200)
-            if frames and self._frame_acc >= delay:
-                self._frame_acc = 0
+            if name == "look" and self._look_target is not None:
+                if self._look_frame is None:
+                    self._look_frame = self._look_target
+                steps, self._look_acc = _frame_clock_steps(
+                    self._look_acc,
+                    elapsed_ms,
+                    LOOK_TRANSITION_MS,
+                )
+                for _ in range(min(steps, LOOK_SECTORS)):
+                    if self._look_frame == self._look_target:
+                        break
+                    self._look_frame = _step_circular_index(
+                        self._look_frame,
+                        self._look_target,
+                    )
+            elif frames:
+                delay = ANIM_MS.get(name, 200)
+                steps, self._frame_acc = _frame_clock_steps(
+                    self._frame_acc,
+                    elapsed_ms,
+                    delay,
+                )
                 last = len(frames) - 1
-                if name in ONESHOT_ANIMS and self._frame >= last:
-                    if self._oneshot == name:
-                        self._oneshot = None
-                else:
-                    self._frame = (self._frame + 1) % len(frames)
+                if steps and self._oneshot == name and name in ONESHOT_ANIMS:
+                    next_frame = self._frame + steps
+                    if next_frame > last:
+                        self._frame = last
+                        self._frame_acc = 0.0
+                        if self._oneshot == name:
+                            self._oneshot = None
+                    else:
+                        self._frame = next_frame
+                elif steps:
+                    self._frame = (self._frame + steps) % len(frames)
         self.draw()
         self.root.after(TICK_MS, self.animate)
         if self._tick * TICK_MS % REFRESH_MS < TICK_MS:
@@ -1597,123 +1837,122 @@ class UsagePet:
         return build_pools(self.snap)
 
     def _draw_bubble(self) -> None:
-        if style().get("bubble_style") == "classic":
-            self._draw_bubble_classic()
-            return
-        self._draw_bubble_kawaii()
-
-    def _draw_bubble_classic(self) -> None:
         c = self.canvas
         ui = style()
         rows = self.visible_rows()
         if not rows:
             return
-        y1 = ui["bubble_top"] + len(rows) * ui["row_h"] + int(ui.get("bubble_bottom") or 0)
-        x0, y0, x1 = 10, ui["bubble_top"], self._win_w - 10
-        c.create_rectangle(x0, y0, x1, y1, fill=ui["bubble_fill"], outline=ui["bubble_outline"], width=1)
-        c.create_polygon(
-            self._win_w // 2 - 8,
-            y1,
-            self._win_w // 2 + 8,
-            y1,
-            self._win_w // 2,
-            y1 + 10,
-            fill=ui["bubble_fill"],
-            outline=ui["bubble_fill"],
-        )
-        pools = self._pools()
-        for i, key in enumerate(rows):
-            top = ui["bubble_top"] + i * ui["row_h"]
-            hot = self._hover in (key, "both")
-            fill = ui["label_hot"] if hot else ui["label"]
-            c.create_text(
-                22,
-                top + 16,
-                text=pools[key]["title"],
-                fill=fill,
-                font=ui["font"],
-                anchor="w",
-            )
-            self._bar(22, top + 20, self._win_w - 34, 14, pools[key]["remaining"])
-
-    def _draw_bow(self, x: float, y: float) -> None:
-        c = self.canvas
-        red = style().get("accent", "#c94b4b")
-        edge = "#b03d3d"
-        c.create_oval(x - 8, y - 5, x - 1, y + 5, fill=red, outline=edge, width=1)
-        c.create_oval(x + 1, y - 5, x + 8, y + 5, fill=red, outline=edge, width=1)
-        c.create_oval(x - 2.5, y - 3, x + 2.5, y + 3, fill="#d96a6a", outline=edge, width=1)
-
-    def _draw_theme_mark(self, x: float, y: float) -> None:
-        ui = style()
-        decoration = ui.get("decoration", "none")
-        if decoration == "bow":
-            self._draw_bow(x, y)
-        elif decoration == "circuit":
-            accent = ui.get("accent", "#45dff2")
-            c = self.canvas
-            c.create_line(x - 15, y, x - 5, y, x, y + 5, x + 5, y, x + 15, y, fill=accent, width=2)
-            c.create_oval(x - 2.5, y + 2.5, x + 2.5, y + 7.5, fill=accent, outline="")
-
-    def _draw_bubble_kawaii(self) -> None:
-        c = self.canvas
-        ui = style()
-        rows = self.visible_rows()
-        if not rows:
-            return
+        rounded = ui.get("bubble_style") != "classic"
         y0 = ui["bubble_top"]
-        y1 = y0 + len(rows) * ui["row_h"] + int(ui.get("bubble_bottom") or 0)
+        extra = int(ui.get("bubble_bottom") or 0) if rounded else 0
+        y1 = y0 + len(rows) * ui["row_h"] + extra
         x0, x1 = 10, self._win_w - 10
-        r = ui["radius"]
+        r = ui.get("radius") or 0
         cx = self._win_w // 2
-        canvas_round_rect(
-            c, x0 + 3, y0 + 4, x1 + 3, y1 + 4, r,
-            fill=ui["bubble_shadow"], outline="",
-        )
-        canvas_round_rect(
-            c, x0, y0, x1, y1, r,
-            fill=ui["bubble_fill"], outline=ui["bubble_outline"], width=2,
-        )
-        c.create_polygon(
-            cx - 12, y1 - 8,
-            cx + 12, y1 - 8,
-            cx, y1 + 12,
-            fill=ui["bubble_outline"], outline=ui["bubble_outline"],
-        )
-        c.create_polygon(
-            cx - 10, y1 - 10,
-            cx + 10, y1 - 10,
-            cx, y1 + 10,
-            fill=ui["bubble_fill"], outline=ui["bubble_fill"],
-        )
-        self._draw_theme_mark(cx, y0)
+        if rounded:
+            canvas_round_rect(
+                c, x0 + 3, y0 + 4, x1 + 3, y1 + 4, r,
+                fill=ui["bubble_shadow"], outline="",
+            )
+            canvas_round_rect(
+                c, x0, y0, x1, y1, r,
+                fill=ui["bubble_fill"], outline=ui["bubble_outline"], width=2,
+            )
+            c.create_polygon(
+                cx - 12, y1 - 8,
+                cx + 12, y1 - 8,
+                cx, y1 + 12,
+                fill=ui["bubble_outline"], outline=ui["bubble_outline"],
+            )
+            c.create_polygon(
+                cx - 10, y1 - 10,
+                cx + 10, y1 - 10,
+                cx, y1 + 10,
+                fill=ui["bubble_fill"], outline=ui["bubble_fill"],
+            )
+            self._draw_decoration(cx, y0)
+        else:
+            c.create_rectangle(x0, y0, x1, y1, fill=ui["bubble_fill"], outline=ui["bubble_outline"], width=1)
+            c.create_polygon(
+                cx - 8, y1, cx + 8, y1, cx, y1 + 10,
+                fill=ui["bubble_fill"], outline=ui["bubble_fill"],
+            )
         pools = self._pools()
+        pad = 16
+        title_x = x0 + pad
+        pct_right = x1 - pad
+        title_font = tkfont.Font(font=ui["font"])
+        pct_font = tkfont.Font(font=ui["font_title"])
+        max_title = max((title_font.measure(pools[key]["title"]) for key in rows), default=0)
+        max_pct = max((pct_font.measure(format_pool_pct(pools[key])) for key in rows), default=0)
+        max_pct = max(max_pct, pct_font.measure("100%  100%"))
+        period_x = title_x + max_title + 12
+        pct_left = pct_right - max_pct
         for i, key in enumerate(rows):
             top = y0 + i * ui["row_h"]
             hot = self._hover in (key, "both")
             fill = ui["label_hot"] if hot else ui["label"]
-            remaining = pools[key]["remaining"]
-            if remaining is None:
-                pct_text = "…"
-            else:
-                pct_text = f"{max(0.0, min(100.0, float(remaining))):.0f}%"
+            pool = pools[key]
             c.create_text(
-                x0 + 16,
+                title_x,
                 top + 14,
-                text=pools[key]["title"],
+                text=pool["title"],
                 fill=fill,
                 font=ui["font_title"] if hot else ui["font"],
                 anchor="w",
             )
+            tag = str(pool.get("tag") or "")
+            if tag and period_x + title_font.measure(tag) <= pct_left - 8:
+                c.create_text(
+                    period_x,
+                    top + 14,
+                    text=tag,
+                    fill=ui.get("muted") or ui["label"],
+                    font=ui["font"],
+                    anchor="w",
+                )
             c.create_text(
-                x1 - 16,
+                pct_right,
                 top + 14,
-                text=pct_text,
+                text=format_pool_pct(pool),
                 fill=ui["pct"] if not hot else ui["label_hot"],
                 font=ui["font_title"],
                 anchor="e",
             )
-            self._bar(x0 + 16, top + 24, (x1 - x0) - 32, 12, remaining)
+            self._bar(
+                title_x,
+                top + 24,
+                (x1 - x0) - pad * 2,
+                12,
+                pool["remaining"],
+                layers=pool.get("layers"),
+            )
+
+    def _draw_bow(self, x: float, y: float) -> None:
+        c = self.canvas
+        red = style().get("accent", "#c94b4b")
+        edge = _blend_hex(red, "#000000", 0.25)
+        inner = _blend_hex(red, "#ffffff", 0.28)
+        c.create_oval(x - 8, y - 5, x - 1, y + 5, fill=red, outline=edge, width=1)
+        c.create_oval(x + 1, y - 5, x + 8, y + 5, fill=red, outline=edge, width=1)
+        c.create_oval(x - 2.5, y - 3, x + 2.5, y + 3, fill=inner, outline=edge, width=1)
+
+    def _draw_circuit(self, x: float, y: float) -> None:
+        c = self.canvas
+        accent = style().get("accent", "#45DFF2")
+        c.create_line(x - 20, y, x - 7, y, fill=accent, width=2)
+        c.create_line(x + 7, y, x + 20, y, fill=accent, width=2)
+        c.create_line(x, y - 9, x, y + 9, fill=accent, width=2)
+        c.create_oval(x - 5, y - 5, x + 5, y + 5, outline=accent, width=2)
+        c.create_oval(x - 22, y - 3, x - 16, y + 3, outline=accent, width=1)
+        c.create_oval(x + 16, y - 3, x + 22, y + 3, outline=accent, width=1)
+
+    def _draw_decoration(self, x: float, y: float) -> None:
+        mark = style().get("decoration") or "none"
+        if mark == "bow":
+            self._draw_bow(x, y)
+        elif mark == "circuit":
+            self._draw_circuit(x, y)
 
     def _wrap_text(self, text: str, font: tkfont.Font, max_px: int) -> list[str]:
         if max_px <= 8 or font.measure(text) <= max_px:
@@ -1741,20 +1980,11 @@ class UsagePet:
         else:
             keys = []
         lines: list[str] = []
+        fetching = self._busy or self.snap is None
         for i, key in enumerate(keys):
             if i:
                 lines.append("")
-            pool = pools[key]
-            lines.append(pool["title"])
-            if pool.get("remaining") is None:
-                lines.append("正在获取…" if self._busy or self.snap is None else "暂时没拿到，正在重试")
-                continue
-            when, left = format_reset(pool.get("reset"))
-            lines.append(when)
-            if left:
-                lines.append(left)
-            for extra in pool.get("extra") or []:
-                lines.append(extra)
+            lines.extend(pool_tip_lines(pools[key], fetching=fetching))
         return lines
 
     def _draw_reset_tip(self) -> None:
@@ -1779,7 +2009,7 @@ class UsagePet:
                 chunks.append(None)
                 height += 6
                 continue
-            title = line in ("SuperGrok", "Grok Bot", "Cursor 模型", "其他模型")
+            title = line in ROW_LABELS.values() or line in {meta["title"] for meta in POOL_META.values()}
             font = font_b if title else font_n
             wrapped = self._wrap_text(line, font, inner)
             for i, piece in enumerate(wrapped):
@@ -1793,7 +2023,8 @@ class UsagePet:
             ty = my - height - 8
         tx = max(6, min(tx, self._win_w - width - 6))
         ty = max(6, min(ty, self._win_h - height - 6))
-        if ui.get("tip_style") == "rounded":
+        rounded = style().get("tip_style") != "square"
+        if rounded:
             canvas_round_rect(
                 c, tx, ty, tx + width, ty + height, 12,
                 fill=ui["tip_fill"], outline=ui["tip_outline"], width=2,
@@ -1840,26 +2071,47 @@ class UsagePet:
             width=2,
         )
 
-    def _bar(self, x: int, y: int, w: int, h: int, remaining) -> None:
+    def _fill_bar(self, x: int, y: int, w: int, h: int, pct: float, fill: str, cute: bool) -> None:
+        if pct <= 0:
+            return
+        fw = max(h if cute else 2, int(w * pct / 100.0))
+        x2 = x + min(w, fw)
+        if cute:
+            canvas_round_rect(self.canvas, x, y, x2, y + h, h / 2, fill=fill, outline="")
+        else:
+            self.canvas.create_rectangle(x, y, x2, y + h, fill=fill, outline="")
+
+    def _bar(self, x: int, y: int, w: int, h: int, remaining, layers=None) -> None:
         c = self.canvas
         ui = style()
-        rounded = ui.get("bar_style") == "rounded"
-        if rounded:
+        cute = style().get("bar_style") != "square"
+        if cute:
             canvas_round_rect(c, x, y, x + w, y + h, h / 2, fill=ui["bar_track"], outline="")
         else:
             c.create_rectangle(x, y, x + w, y + h, fill=ui["bar_track"], outline="")
+        fills: list[tuple[float, str, str]] = []
+        for layer in layers or []:
+            rem = layer.get("remaining")
+            if rem is None:
+                continue
+            pct = max(0.0, min(100.0, float(rem)))
+            tone = layer.get("tone") or "dark"
+            color = ui["bar_layer_dark"] if tone == "dark" else ui["bar_layer_light"]
+            fills.append((pct, color, tone))
+        if fills:
+            for pct, color, _tone in sorted(
+                fills, key=lambda item: (-item[0], 0 if item[2] == "light" else 1)
+            ):
+                self._fill_bar(x, y, w, h, pct, color, cute)
+            return
         if remaining is None:
             pulse = 0.55 + 0.25 * math.sin(self._tick / 7.0)
-            if rounded:
-                fill = ui["bar_ok"]
-            else:
-                gray = int(40 + 50 * pulse)
-                fill = f"#{gray:02x}{gray:02x}{int(gray * 1.15):02x}"
+            fill = _blend_hex(ui["bar_track"], ui.get("spinner") or ui["bar_ok"], pulse)
             sweep = int((w - 22) * (0.35 + 0.2 * math.sin(self._tick / 8.0)))
             offset = int((w - 22 - sweep) * (0.5 + 0.5 * math.sin(self._tick / 11.0)))
             x1 = x + offset
             x2 = x + offset + max(8, sweep)
-            if rounded:
+            if cute:
                 canvas_round_rect(c, x1, y, x2, y + h, h / 2, fill=fill, outline="")
             else:
                 c.create_rectangle(x1, y, x2, y + h, fill=fill, outline="")
@@ -1867,21 +2119,7 @@ class UsagePet:
             return
         pct = max(0.0, min(100.0, float(remaining)))
         fill = ui["bar_ok"] if pct >= 50 else ui["bar_mid"] if pct >= 20 else ui["bar_low"]
-        fw = max(h if rounded else 2, int(w * pct / 100.0)) if pct > 0 else 0
-        if fw > 0:
-            if rounded:
-                canvas_round_rect(c, x, y, x + min(w, fw), y + h, h / 2, fill=fill, outline="")
-            else:
-                c.create_rectangle(x, y, x + fw, y + h, fill=fill, outline="")
-        if not rounded and ui.get("bubble_style") == "classic":
-            c.create_text(
-                x + w - 2,
-                y + h // 2,
-                text=f"{pct:.0f}%",
-                fill=ui["pct"],
-                font=("Segoe UI", 8, "bold"),
-                anchor="e",
-            )
+        self._fill_bar(x, y, w, h, pct, fill, cute)
 
     def run(self) -> None:
         print("entering mainloop", flush=True)
@@ -1902,7 +2140,8 @@ def smoke_test() -> None:
         if image.size != expected:
             raise RuntimeError(f"spritesheet size {image.size} does not match {expected}")
         image.verify()
-    if not (ASSETS / "app.ico").exists() or not (ASSETS / "app.png").exists():
+    icon_dir = skin_folder(DEFAULT_SKIN_ID)
+    if not (icon_dir / "app.ico").exists() or not (icon_dir / "app.png").exists():
         raise RuntimeError("application icons are missing")
     print(f"smoke test OK: v{APP_VERSION} {atlas_path} {expected}")
 
@@ -1929,6 +2168,20 @@ def visual_smoke_snapshot() -> dict:
                 "on_demand_allowed": False,
                 "cursor_models": {"remaining_percent": 48.0, "hint": "Visual smoke test"},
                 "other_models": {"remaining_percent": 84.0, "hint": "Visual smoke test"},
+            },
+        },
+        "codex": {
+            "source_status": fu.SOURCE_OK,
+            "plan_type": "pro",
+            "primary": {
+                "remaining_percent": 67.0,
+                "resets_at": "2030-01-01T05:00:00Z",
+                "hint": "5 小时窗口",
+            },
+            "secondary": {
+                "remaining_percent": 81.0,
+                "resets_at": "2030-01-07T00:00:00Z",
+                "hint": "7 天窗口",
             },
         },
         "errors": None,
@@ -1975,6 +2228,12 @@ def main() -> None:
     try:
         if not claim_singleton():
             return
+        try:
+            import watch_apps
+
+            watch_apps.clear_dismissed()
+        except Exception:
+            pass
         UsagePet().run()
     except Exception:
         import traceback

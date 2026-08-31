@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased
+
+## 0.3.3 — 2026-08-31
+
+Quota, animation, launcher, and hardening release. Git tag: `v0.3.3`.
+
+- Add Codex 5-hour and weekly remaining on one bar (dark = 5-hour, light = weekly) from local ChatGPT-login `~/.codex/auth.json`.
+- Refresh Codex OAuth tokens locally; never store Codex tokens in usage snapshots.
+- After a manual quit, do not autostart again until Grok Build or Cursor is restarted, or the user opens the pet.
+- Play `failed` after every usable fetch below 20% remaining, and one-shot `waiting` above 20%.
+- Play `waving` on first appearance, after a skin switch, and every 5 minutes without user input.
+- Preserve real frame timing and smooth 16-direction look transitions across skins.
+- Align quota rows (name, period tag, remaining) across SuperGrok, Cursor, and Codex.
+- Fix the desktop shortcut so `pythonw` receives the pet script path without extra quotes.
+- Tolerate Tk menu cleanup racing with application shutdown.
+- Allow Grok OAuth refresh only against `https://auth.x.ai`.
+- Keep skin ids and asset filenames inside `skins/<id>/`.
+- Document Codex network endpoints in `SECURITY.md`.
+- Add structured public feedback forms and contribution/privacy guidance.
+- Require release tags to match `VERSION` before packaging.
+
 ## 0.3.1 — 2026-08-30
 
 Theme and hover-behavior update. Git tag: `v0.3.1`.
@@ -21,12 +42,11 @@ Product and release-foundation update. Git tag: `v0.3.0`.
 - Add Pip, an original pixel robot, as the complete default theme.
 - Keep Megumi Kato as an optional unofficial fan theme with a separate asset
   notice; the MIT license applies to code, not third-party character artwork.
-- Remove the legacy `assets/` fallback and load every theme exclusively from
-  `skins/<id>/`.
+- Load every theme from `skins/<id>/` and fall back safely to Original.
 - Migrate existing state and snapshots from `GrokUsagePetKawaii` on first run
   without overwriting newer files.
-- Add accurate privacy/security documentation, repository hygiene checks, MIT
-  licensing, Windows CI, and tag-driven GitHub Releases.
+- Add privacy/security documentation, repository hygiene checks, MIT licensing,
+  Windows CI, and tag-driven GitHub Releases.
 - Publish versioned Windows x64 archives with SHA256 checksums.
 
 ## 0.2.0 — 2026-08-29

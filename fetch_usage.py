@@ -4,6 +4,7 @@
 Reads (leave these where the apps put them):
   ~/.grok/auth.json                                  SuperGrok / Grok Build login
   %APPDATA%/Cursor/User/globalStorage/state.vscdb    Cursor login (Grok Bot)
+  ~/.codex/auth.json                                 Codex / ChatGPT login
 
 Writes snapshots to the OS app-data folder (%%LOCALAPPDATA%%/GrokUsagePet on
 Windows, ~/Library/Application Support/GrokUsagePet on macOS).
@@ -16,6 +17,7 @@ Two independent weekly meters:
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 import shutil
@@ -50,6 +52,11 @@ APP_NAME = "GrokUsagePet"
 BILLING_URL = "https://cli-chat-proxy.grok.com/v1/billing?format=credits"
 SETTINGS_URL = "https://cli-chat-proxy.grok.com/v1/settings"
 CURSOR_RPC = "https://api2.cursor.sh/aiserver.v1.DashboardService"
+CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage"
+CODEX_TOKEN_URL = "https://auth.openai.com/oauth/token"
+GROK_OIDC_ISSUER = "https://auth.x.ai"
+GROK_OIDC_HOST = "auth.x.ai"
+CODEX_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
 WATCH_SECS = 60
 REFRESH_SKEW_SECS = 300
 
@@ -114,6 +121,15 @@ def grok_auth_file() -> Path:
     return grok_home() / "auth.json"
 
 
+def codex_home() -> Path:
+    env = os.environ.get("CODEX_HOME")
+    return Path(env) if env else Path.home() / ".codex"
+
+
+def codex_auth_file() -> Path:
+    return codex_home() / "auth.json"
+
+
 def find_cursor_db() -> Path | None:
     home = Path.home()
     if sys.platform == "darwin":
@@ -146,8 +162,23 @@ def _token_expired(entry: dict, skew_secs: int = 0) -> bool:
     return exp <= datetime.now(timezone.utc) + timedelta(seconds=skew_secs)
 
 
+def _grok_https_url(url: str) -> str:
+    parsed = urllib.parse.urlparse(str(url or "").strip())
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname != GROK_OIDC_HOST
+        or parsed.port not in (None, 443)
+        or parsed.username
+        or parsed.password
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise RuntimeError("Grok 登录刷新地址无效")
+    return urllib.parse.urlunparse(parsed)
+
+
 def _oidc_token_url(issuer: str) -> str:
-    base = (issuer or "https://auth.x.ai").rstrip("/")
+    base = _grok_https_url(issuer or GROK_OIDC_ISSUER).rstrip("/")
     url = f"{base}/.well-known/openid-configuration"
     req = urllib.request.Request(url, headers={"Accept": "application/json"}, method="GET")
     with urllib.request.urlopen(req, timeout=20) as resp:
@@ -155,7 +186,7 @@ def _oidc_token_url(issuer: str) -> str:
     token_url = cfg.get("token_endpoint")
     if not token_url:
         raise RuntimeError("无法发现 Grok 登录刷新地址")
-    return str(token_url)
+    return _grok_https_url(str(token_url))
 
 
 def _write_auth(path: Path, data: dict) -> None:
@@ -193,7 +224,7 @@ def _write_auth(path: Path, data: dict) -> None:
 def refresh_grok_auth(data: dict, account_id: str, entry: dict) -> dict:
     refresh = entry.get("refresh_token")
     client_id = entry.get("oidc_client_id")
-    issuer = entry.get("oidc_issuer") or "https://auth.x.ai"
+    issuer = entry.get("oidc_issuer") or GROK_OIDC_ISSUER
     if not refresh or not client_id:
         raise RuntimeError("Grok 登录已过期，请先运行 grok login")
     body = urllib.parse.urlencode(
@@ -379,6 +410,218 @@ def fetch_cursor() -> dict | None:
     }
 
 
+def _b64url_json(segment: str) -> dict | None:
+    try:
+        padded = segment + "=" * (-len(segment) % 4)
+        raw = base64.urlsafe_b64decode(padded.encode("ascii"))
+        data = json.loads(raw.decode("utf-8"))
+    except (ValueError, json.JSONDecodeError, UnicodeDecodeError, OSError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _jwt_expiry(token: str) -> datetime | None:
+    parts = token.split(".")
+    if len(parts) < 2:
+        return None
+    payload = _b64url_json(parts[1]) or {}
+    try:
+        return datetime.fromtimestamp(int(payload["exp"]), tz=timezone.utc)
+    except (KeyError, TypeError, ValueError, OSError, OverflowError):
+        return None
+
+
+def _epoch_to_iso(value) -> str | None:
+    number = as_float(value)
+    if number is None:
+        return None
+    if number > 1e12:
+        number /= 1000.0
+    try:
+        return datetime.fromtimestamp(number, tz=timezone.utc).isoformat()
+    except (OSError, OverflowError, ValueError):
+        return None
+
+
+def _codex_window(raw: dict | None) -> dict:
+    data = raw if isinstance(raw, dict) else {}
+    used = as_float(data.get("used_percent"))
+    remaining = max(0.0, 100.0 - used) if used is not None else None
+    seconds = as_float(data.get("limit_window_seconds"))
+    hint = ""
+    if seconds is not None:
+        hours = int(seconds) // 3600
+        if hours >= 24:
+            hint = f"{hours // 24} 天窗口"
+        elif hours:
+            hint = f"{hours} 小时窗口"
+    resets_at = _epoch_to_iso(data.get("reset_at"))
+    if resets_at is None and data.get("reset_after_seconds") is not None:
+        try:
+            resets_at = _epoch_to_iso(time.time() + float(data["reset_after_seconds"]))
+        except (TypeError, ValueError):
+            resets_at = None
+    return {
+        "used_percent": used,
+        "remaining_percent": remaining,
+        "resets_at": resets_at,
+        "window_seconds": int(seconds) if seconds is not None else None,
+        "hint": hint,
+    }
+
+
+def refresh_codex_auth(data: dict) -> dict:
+    tokens = data.get("tokens")
+    if not isinstance(tokens, dict):
+        raise RuntimeError("Codex 登录已过期，请先运行 codex login")
+    refresh = tokens.get("refresh_token")
+    if not refresh:
+        raise RuntimeError("Codex 登录已过期，请先运行 codex login")
+    body = urllib.parse.urlencode(
+        {
+            "grant_type": "refresh_token",
+            "refresh_token": refresh,
+            "client_id": CODEX_CLIENT_ID,
+        }
+    ).encode("utf-8")
+    req = urllib.request.Request(
+        CODEX_TOKEN_URL,
+        data=body,
+        method="POST",
+        headers={
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Accept": "application/json",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        raise RuntimeError("Codex 登录已过期，请先运行 codex login") from exc
+    access = payload.get("access_token")
+    if not access:
+        raise RuntimeError("Codex 登录刷新失败，请先运行 codex login")
+    tokens["access_token"] = access
+    if payload.get("refresh_token"):
+        tokens["refresh_token"] = payload["refresh_token"]
+    if payload.get("id_token"):
+        tokens["id_token"] = payload["id_token"]
+    data["tokens"] = tokens
+    data["last_refresh"] = datetime.now(timezone.utc).isoformat()
+    _write_auth(codex_auth_file(), data)
+    return data
+
+
+def load_codex_auth(*, force_refresh: bool = False) -> dict | None:
+    path = codex_auth_file()
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        raise RuntimeError("Codex 登录文件损坏，请先运行 codex login")
+    if not isinstance(data, dict):
+        raise RuntimeError("Codex 登录文件损坏，请先运行 codex login")
+    mode = str(data.get("auth_mode") or "").lower()
+    if mode in {"apikey", "api_key", "api"} or (data.get("OPENAI_API_KEY") and not (data.get("tokens") or {}).get("access_token")):
+        return {"mode": "apikey"}
+    tokens = data.get("tokens")
+    if not isinstance(tokens, dict) or not tokens.get("access_token"):
+        return None
+    access = str(tokens.get("access_token"))
+    exp = _jwt_expiry(access)
+    stale = force_refresh or (exp is not None and exp <= datetime.now(timezone.utc) + timedelta(seconds=REFRESH_SKEW_SECS))
+    if stale:
+        try:
+            data = refresh_codex_auth(data)
+            tokens = data.get("tokens") or {}
+            access = str(tokens.get("access_token") or "")
+        except RuntimeError:
+            if force_refresh or not access:
+                raise
+            if exp is not None and exp <= datetime.now(timezone.utc):
+                raise
+    if not access:
+        raise RuntimeError("Codex 登录无 token，请先运行 codex login")
+    return {
+        "mode": "chatgpt",
+        "access_token": access,
+        "account_id": tokens.get("account_id") or None,
+    }
+
+
+def _codex_get(url: str, access: str, account_id: str | None) -> dict:
+    headers = {
+        "Authorization": f"Bearer {access}",
+        "Accept": "application/json",
+        "User-Agent": "codex-cli",
+    }
+    if account_id:
+        headers["ChatGPT-Account-Id"] = str(account_id)
+    req = urllib.request.Request(url, headers=headers, method="GET")
+    with urllib.request.urlopen(req, timeout=20) as resp:
+        payload = json.loads(resp.read().decode("utf-8"))
+    if not isinstance(payload, dict):
+        raise RuntimeError("Codex 额度接口返回异常")
+    return payload
+
+
+def fetch_codex() -> dict | None:
+    try:
+        creds = load_codex_auth()
+    except RuntimeError as exc:
+        return {"source_status": SOURCE_ERROR, "errors": {"codex": str(exc)}}
+    if creds is None:
+        return None
+    if creds.get("mode") == "apikey":
+        return {
+            "source_status": SOURCE_UNAVAILABLE,
+            "plan_type": "api",
+            "primary": {"remaining_percent": None, "used_percent": None, "resets_at": None, "hint": "API Key 按量计费，没有套餐剩余百分比"},
+            "secondary": {"remaining_percent": None, "used_percent": None, "resets_at": None, "hint": ""},
+            "errors": {"codex": "Codex 当前为 API Key 计费，没有套餐剩余百分比。请用 ChatGPT 登录 Codex。"},
+        }
+    access = str(creds.get("access_token") or "")
+    account_id = creds.get("account_id")
+    try:
+        try:
+            payload = _codex_get(CODEX_USAGE_URL, access, account_id)
+        except urllib.error.HTTPError as exc:
+            if exc.code not in (401, 403):
+                raise
+            creds = load_codex_auth(force_refresh=True) or {}
+            access = str(creds.get("access_token") or "")
+            account_id = creds.get("account_id")
+            payload = _codex_get(CODEX_USAGE_URL, access, account_id)
+    except Exception as exc:
+        return {"source_status": SOURCE_ERROR, "errors": {"codex": str(exc)}}
+    rate = payload.get("rate_limit") if isinstance(payload.get("rate_limit"), dict) else {}
+    primary = _codex_window(rate.get("primary_window"))
+    secondary = _codex_window(rate.get("secondary_window"))
+    credits = payload.get("credits") if isinstance(payload.get("credits"), dict) else {}
+    extras: list[str] = []
+    plan = payload.get("plan_type")
+    if plan:
+        extras.append(f"ChatGPT {plan}")
+    balance = credits.get("balance")
+    if balance not in (None, ""):
+        extras.append(f"额外 credits {balance}")
+    usable = primary.get("remaining_percent") is not None or secondary.get("remaining_percent") is not None
+    if not primary.get("hint"):
+        primary["hint"] = "5 小时窗口"
+    if not secondary.get("hint"):
+        secondary["hint"] = "7 天窗口"
+    primary["extra"] = extras
+    secondary["extra"] = extras
+    return {
+        "source_status": SOURCE_OK if usable else SOURCE_ERROR,
+        "plan_type": plan,
+        "primary": primary,
+        "secondary": secondary,
+        "errors": None if usable else {"codex": "Codex 接口未返回有效额度数据"},
+    }
+
+
 def get_json(url: str, token: str) -> dict:
     req = urllib.request.Request(
         url,
@@ -399,6 +642,7 @@ def snapshot() -> dict:
     errors: dict[str, str] = {}
     grok_status = SOURCE_UNAVAILABLE if not grok_auth_file().exists() else SOURCE_ERROR
     cursor_status = SOURCE_UNAVAILABLE
+    codex_status = SOURCE_UNAVAILABLE
     entry: dict = {}
     cfg: dict = {}
     tier = None
@@ -453,10 +697,32 @@ def snapshot() -> dict:
         errors["cursor"] = str(exc)
         cursor_status = SOURCE_ERROR
 
-    source_states = (grok_status, cursor_status)
-    if all(state == SOURCE_OK for state in source_states):
+    codex = None
+    try:
+        codex = fetch_codex()
+        if codex is None:
+            errors["codex"] = "未找到 Codex 登录，请先运行 codex login"
+            codex_status = SOURCE_UNAVAILABLE
+        else:
+            codex_status = str(codex.get("source_status") or SOURCE_ERROR)
+            codex_errors = codex.get("errors") or {}
+            if isinstance(codex_errors, dict):
+                for key, value in codex_errors.items():
+                    errors[str(key)] = str(value)
+            if codex_status == SOURCE_ERROR and "codex" not in errors:
+                errors["codex"] = "Codex 接口未返回有效额度数据"
+    except Exception as exc:
+        codex = {"error": str(exc)}
+        errors["codex"] = str(exc)
+        codex_status = SOURCE_ERROR
+
+    source_states = (grok_status, cursor_status, codex_status)
+    active = [state for state in source_states if state != SOURCE_UNAVAILABLE]
+    if not active:
+        status = STATUS_FAILED
+    elif all(state == SOURCE_OK for state in active):
         status = STATUS_COMPLETE
-    elif any(state == SOURCE_OK for state in source_states):
+    elif any(state == SOURCE_OK for state in active):
         status = STATUS_PARTIAL
     else:
         status = STATUS_FAILED
@@ -464,11 +730,14 @@ def snapshot() -> dict:
     sources = {
         "grok": {"status": grok_status},
         "cursor": {"status": cursor_status},
+        "codex": {"status": codex_status},
     }
     if errors.get("grok"):
         sources["grok"]["error"] = errors["grok"]
     if errors.get("cursor"):
         sources["cursor"]["error"] = errors["cursor"]
+    if errors.get("codex"):
+        sources["codex"]["error"] = errors["codex"]
 
     return {
         "status": status,
@@ -480,6 +749,7 @@ def snapshot() -> dict:
         "remaining_percent": remaining_pct,
         "products_used_percent": products,
         "cursor": cursor,
+        "codex": codex,
         "errors": errors or None,
     }
 

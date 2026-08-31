@@ -25,9 +25,11 @@ Colors must use `#RRGGBB`; invalid presets, colors, or enum values safely fall
 back to the soft preset. `radius` is clamped to 0–28.
 
 Available color tokens include `bubbleFill`, `bubbleOutline`, `bubbleShadow`,
-`label`, `labelHot`, `barTrack`, `barOk`, `barMid`, `barLow`, `percentage`,
-`tipFill`, `tipOutline`, `tipTitle`, `tipText`, `spinner`, `accent`, `inner`, and
-the `settingsBackground`/`settingsForeground`/`settingsMuted` family.
+`label`, `labelHot`, `barTrack`, `barOk`, `barMid`, `barLow`, `barLayerLight`,
+`barLayerDark`, `percentage`, `tipFill`, `tipOutline`, `tipTitle`, `tipText`,
+`spinner`, `accent`, `inner`, `muted`, and the
+`settingsBackground`/`settingsForeground`/`settingsMuted` family.
 
-Themes affect the quota card, progress bars, reset tooltip, settings window,
-and decorative mark. They do not affect quota fetching or credential access.
+Themes change colors, radius, bar/tip shape, and the decorative mark. Every
+quota row shows the same content (name, period, remaining, reset on hover).
+They do not affect quota fetching or credential access.

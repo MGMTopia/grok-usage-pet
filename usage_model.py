@@ -70,6 +70,12 @@ def one_line(snap: dict) -> str:
         if pool.get("remaining_percent") is not None:
             separator = " || " if line else ""
             line += f"{separator}{label} remaining {pool['remaining_percent']:.1f}%"
+    codex = snap.get("codex") or {}
+    for key, label in (("primary", "Codex 5小时"), ("secondary", "Codex 周额度")):
+        pool = codex.get(key) or {}
+        if pool.get("remaining_percent") is not None:
+            separator = " || " if line else ""
+            line += f"{separator}{label} remaining {pool['remaining_percent']:.1f}%"
     return line or "usage unavailable"
 
 

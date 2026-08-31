@@ -12,10 +12,17 @@ The app does not require a separate account. It uses existing local sessions:
 - Opens Cursor's `state.vscdb` in read-only SQLite mode to obtain the local
   access token and account metadata.
 - Never writes to Cursor's database.
+- Reads ChatGPT-login Codex credentials from `%USERPROFILE%\.codex\auth.json`
+  (or `CODEX_HOME`). It never copies that file into a release and never stores
+  `access_token`, `refresh_token`, or `account_id` in usage snapshots.
 - When a Grok access token expires, follows the account's OIDC discovery
   metadata, refreshes the token, and atomically updates the existing Grok
-  `auth.json`. On platforms that support POSIX modes, private file permissions
-  are preserved.
+  `auth.json`. The issuer and token endpoint must be `https://auth.x.ai`
+  (no other host, scheme, port, or userinfo). On platforms that support POSIX
+  modes, private file permissions are preserved.
+- When a Codex access token expires, refreshes it at `https://auth.openai.com`
+  and writes the updated tokens back to the existing Codex `auth.json`. API Key
+  Codex mode has no remaining-percentage pool and is treated as unavailable.
 
 ## Network access
 
@@ -24,7 +31,10 @@ Quota retrieval contacts only:
 - the Grok account's configured OIDC issuer (normally `https://auth.x.ai`) for
   discovery and token refresh;
 - `https://cli-chat-proxy.grok.com` for SuperGrok billing and settings;
-- `https://api2.cursor.sh` for Cursor and Grok Bot quota information.
+- `https://api2.cursor.sh` for Cursor and Grok Bot quota information;
+- `https://auth.openai.com` to refresh a ChatGPT-login Codex session;
+- `https://chatgpt.com/backend-api/wham/usage` for Codex 5-hour and weekly
+  remaining percentages.
 
 The OIDC token endpoint is discovered dynamically from the configured issuer,
 so it is not necessarily a single fixed URL.
@@ -53,6 +63,6 @@ the ZIP. Published archives include a SHA256 checksum.
 ## Reporting a vulnerability
 
 Do not open a public issue containing credentials, database contents, logs, or
-private paths. Send a minimal reproduction with all secrets and personal data
-removed through a private contact channel listed on the maintainer's GitHub
-profile.
+private paths. Use the repository's
+[private vulnerability report](https://github.com/liruilong0805/grok-usage-pet/security/advisories/new)
+and send only a minimal reproduction with all secrets and personal data removed.

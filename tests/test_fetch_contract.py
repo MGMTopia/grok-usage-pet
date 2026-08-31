@@ -75,23 +75,26 @@ class SnapshotContractTests(unittest.TestCase):
             mock.patch.object(fu, "load_token", return_value=("token", {})),
             mock.patch.object(fu, "get_json", side_effect=get_json),
             mock.patch.object(fu, "fetch_cursor", return_value=None),
+            mock.patch.object(fu, "fetch_codex", return_value=None),
         ):
             snap = fu.snapshot()
 
-        self.assertEqual(snap["status"], fu.STATUS_PARTIAL)
+        self.assertEqual(snap["status"], fu.STATUS_COMPLETE)
         self.assertEqual(snap["sources"]["grok"]["status"], fu.SOURCE_OK)
         self.assertEqual(snap["sources"]["cursor"]["status"], fu.SOURCE_UNAVAILABLE)
+        self.assertEqual(snap["sources"]["codex"]["status"], fu.SOURCE_UNAVAILABLE)
         self.assertTrue(fu.snapshot_is_usable(snap))
         self.assertEqual(fu.exit_code_for_snapshot(snap), 0)
 
-    def test_cursor_only_is_partial_and_usable(self) -> None:
+    def test_cursor_only_is_complete_when_other_sources_are_absent(self) -> None:
         with (
             mock.patch.object(fu, "load_token", side_effect=RuntimeError("未找到 Grok 登录")),
             mock.patch.object(fu, "fetch_cursor", return_value=cursor_result()),
+            mock.patch.object(fu, "fetch_codex", return_value=None),
         ):
             snap = fu.snapshot()
 
-        self.assertEqual(snap["status"], fu.STATUS_PARTIAL)
+        self.assertEqual(snap["status"], fu.STATUS_COMPLETE)
         self.assertEqual(snap["sources"]["grok"]["status"], fu.SOURCE_UNAVAILABLE)
         self.assertEqual(snap["sources"]["cursor"]["status"], fu.SOURCE_OK)
         self.assertEqual(fu.exit_code_for_snapshot(snap), 0)
@@ -100,6 +103,7 @@ class SnapshotContractTests(unittest.TestCase):
         with (
             mock.patch.object(fu, "load_token", side_effect=RuntimeError("未找到 Grok 登录")),
             mock.patch.object(fu, "fetch_cursor", return_value=None),
+            mock.patch.object(fu, "fetch_codex", return_value=None),
         ):
             snap = fu.snapshot()
 
@@ -118,6 +122,7 @@ class SnapshotContractTests(unittest.TestCase):
             mock.patch.object(fu, "load_token", return_value=("token", {})),
             mock.patch.object(fu, "get_json", side_effect=get_json),
             mock.patch.object(fu, "fetch_cursor", return_value=cursor_result()),
+            mock.patch.object(fu, "fetch_codex", return_value=None),
         ):
             snap = fu.snapshot()
 
@@ -134,6 +139,53 @@ class SnapshotContractTests(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertEqual(result["source_status"], fu.SOURCE_ERROR)
         self.assertTrue(result["errors"])
+
+
+class CodexContractTests(unittest.TestCase):
+    def test_missing_codex_login_is_unavailable(self) -> None:
+        self.assertIsNone(fu.fetch_codex())
+
+    def test_api_key_mode_has_no_percent_pool(self) -> None:
+        with mock.patch.object(fu, "load_codex_auth", return_value={"mode": "apikey"}):
+            result = fu.fetch_codex()
+        self.assertEqual(result["source_status"], fu.SOURCE_UNAVAILABLE)
+        self.assertIsNone(result["primary"]["remaining_percent"])
+        dumped = json.dumps(result)
+        self.assertNotIn("access_token", dumped)
+        self.assertNotIn("refresh_token", dumped)
+
+    def test_codex_windows_map_to_remaining_percent(self) -> None:
+        payload = {
+            "plan_type": "pro",
+            "rate_limit": {
+                "primary_window": {
+                    "used_percent": 25,
+                    "reset_at": 1893456000,
+                    "limit_window_seconds": 18000,
+                },
+                "secondary_window": {
+                    "used_percent": 10,
+                    "reset_after_seconds": 1000,
+                    "limit_window_seconds": 604800,
+                },
+            },
+            "credits": {"balance": "3"},
+        }
+        with (
+            mock.patch.object(
+                fu,
+                "load_codex_auth",
+                return_value={"mode": "chatgpt", "access_token": "secret-token", "account_id": "acct"},
+            ),
+            mock.patch.object(fu, "_codex_get", return_value=payload),
+        ):
+            result = fu.fetch_codex()
+        self.assertEqual(result["source_status"], fu.SOURCE_OK)
+        self.assertEqual(result["primary"]["remaining_percent"], 75.0)
+        self.assertEqual(result["secondary"]["remaining_percent"], 90.0)
+        dumped = json.dumps(result)
+        self.assertNotIn("secret-token", dumped)
+        self.assertNotIn("acct", dumped)
 
 
 class SnapshotStorageTests(unittest.TestCase):

@@ -1,0 +1,50 @@
+name: Feature request
+description: Suggest a focused improvement or theme idea.
+title: "[Feature] "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Keep proposals aligned with a local-first quota desktop pet. For open-ended brainstorming or polls, use Discussions.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Quota reliability
+        - Privacy / security
+        - Pet interaction / animation
+        - Theme tooling
+        - Windows packaging
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: Explain the user problem before describing a solution.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed improvement
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope confirmation
+      options:
+        - label: This remains a focused quota pet rather than a general AI dashboard.
+          required: true
+        - label: I did not include credentials, private account data, or non-redistributable artwork.
+          required: true

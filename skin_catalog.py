@@ -6,6 +6,19 @@ import json
 from pathlib import Path
 
 
+def is_safe_skin_id(skin_id: str) -> bool:
+    if not skin_id or skin_id in {".", ".."}:
+        return False
+    return all(ch.isalnum() or ch in "._-" for ch in skin_id) and ".." not in skin_id
+
+
+def is_safe_asset_name(name: str) -> bool:
+    if not name or name in {".", ".."}:
+        return False
+    path = Path(name)
+    return len(path.parts) == 1 and path.parts[0] not in {".", ".."}
+
+
 class SkinCatalog:
     def __init__(
         self,
@@ -28,7 +41,25 @@ class SkinCatalog:
         return data if isinstance(data, dict) else {}
 
     def folder(self, skin_id: str) -> Path:
-        return self.skins_dir / skin_id
+        safe_id = skin_id if is_safe_skin_id(skin_id) else self.default_skin_id
+        root = self.skins_dir.resolve()
+        path = (self.skins_dir / safe_id).resolve()
+        try:
+            path.relative_to(root)
+        except ValueError:
+            return (self.skins_dir / self.default_skin_id).resolve()
+        return path
+
+    def _child_file(self, skin_id: str, name: str) -> Path | None:
+        if not is_safe_asset_name(name):
+            return None
+        folder = self.folder(skin_id)
+        path = (folder / name).resolve()
+        try:
+            path.relative_to(folder.resolve())
+        except ValueError:
+            return None
+        return path
 
     def load_spec(self, skin_id: str) -> dict:
         spec = self.read_json(self.folder(skin_id) / "pet.json")
@@ -54,13 +85,24 @@ class SkinCatalog:
                 for name, (row, count) in self.default_animations.items()
             }
         spec.setdefault("look", {"rows": [9, 10], "framesPerRow": 8, "origin": "up", "order": "clockwise"})
+        if not is_safe_skin_id(str(spec.get("id") or "")):
+            spec["id"] = skin_id if is_safe_skin_id(skin_id) else self.default_skin_id
+        for key, fallback in (
+            ("spritesheetPath", "spritesheet.webp"),
+            ("icon", "app.ico"),
+            ("iconPng", "app.png"),
+        ):
+            if not is_safe_asset_name(str(spec.get(key) or "")):
+                spec[key] = fallback
         return spec
 
     def atlas_path(self, skin_id: str) -> Path | None:
+        if not is_safe_skin_id(skin_id):
+            return None
         spec = self.load_spec(skin_id)
         name = str(spec.get("spritesheetPath") or "spritesheet.webp")
-        path = self.folder(skin_id) / name
-        if path.exists():
+        path = self._child_file(skin_id, name)
+        if path is not None and path.exists():
             return path
         return None
 

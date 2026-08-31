@@ -54,6 +54,12 @@ class BuildConfigTests(unittest.TestCase):
         self.assertIn("MIT License", license_text)
         self.assertIn("megumi-kato", assets)
 
+    def test_release_workflow_binds_tag_version_and_changelog(self) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+        self.assertIn('if ($env:GITHUB_REF_NAME -ne $expected)', workflow)
+        self.assertIn("CHANGELOG section for $version not found", workflow)
+        self.assertIn("--notes-file release-notes.md", workflow)
+
 
 if __name__ == "__main__":
     unittest.main()

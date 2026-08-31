@@ -17,6 +17,7 @@ _HOME_PATCH.start()
 
 import fetch_usage as fu  # noqa: E402
 import pet  # noqa: E402
+import skin_catalog as skins  # noqa: E402
 
 
 class AuthWriteTests(unittest.TestCase):
@@ -53,6 +54,57 @@ class AuthWriteTests(unittest.TestCase):
 
             self.assertEqual(path.read_text(encoding="utf-8"), original)
             self.assertEqual(list(path.parent.glob(".auth.json.*.tmp")), [])
+
+
+class GrokOidcAllowlistTests(unittest.TestCase):
+    def test_https_auth_x_ai_is_accepted(self) -> None:
+        self.assertEqual(fu._grok_https_url("https://auth.x.ai"), "https://auth.x.ai")
+        self.assertEqual(
+            fu._grok_https_url("https://auth.x.ai/oauth/token"),
+            "https://auth.x.ai/oauth/token",
+        )
+
+    def test_non_https_or_other_hosts_are_rejected(self) -> None:
+        for url in (
+            "http://auth.x.ai",
+            "https://evil.example",
+            "https://auth.x.ai.evil.com",
+            "https://user@auth.x.ai",
+            "https://auth.x.ai:8443",
+            "https://auth.x.ai/oauth/token?next=https://evil",
+        ):
+            with self.subTest(url=url):
+                with self.assertRaises(RuntimeError):
+                    fu._grok_https_url(url)
+
+    def test_discovery_rejects_foreign_token_endpoint(self) -> None:
+        issuer = "https://auth.x.ai"
+        cfg = json.dumps({"token_endpoint": "https://evil.example/token"}).encode("utf-8")
+
+        class FakeResp:
+            def read(self):
+                return cfg
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+        with mock.patch.object(fu.urllib.request, "urlopen", return_value=FakeResp()):
+            with self.assertRaises(RuntimeError):
+                fu._oidc_token_url(issuer)
+
+
+class SkinPathTests(unittest.TestCase):
+    def test_ids_and_asset_names_stay_inside_skins(self) -> None:
+        self.assertTrue(skins.is_safe_skin_id("megumi-kato"))
+        self.assertTrue(skins.is_safe_asset_name("spritesheet.webp"))
+        self.assertFalse(skins.is_safe_skin_id(".."))
+        self.assertFalse(skins.is_safe_skin_id("../evil"))
+        self.assertFalse(skins.is_safe_skin_id("foo/bar"))
+        self.assertFalse(skins.is_safe_asset_name("../secret.webp"))
+        self.assertFalse(skins.is_safe_asset_name("sub/sheet.webp"))
 
 
 class CursorHookTests(unittest.TestCase):

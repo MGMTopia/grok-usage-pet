@@ -1,34 +1,37 @@
 Grok Usage Pet
 ==============
 
-版本：0.3.1（GitHub 标签 v0.3.1）
+版本：0.3.3（GitHub 标签 v0.3.3）
 
-看 SuperGrok 周额度、Grok Bot 周额度，以及 Cursor 两个月额度池的透明桌宠。
-不是 xAI / Cursor 官方软件。账单接口以后可能会变。
+看 SuperGrok 周额度、Grok Bot 周额度、Cursor 两个月额度池，以及 Codex（一条上深色 5 小时 / 浅色周额度）的透明桌宠。
+不是 xAI / Cursor / OpenAI 官方软件。账单接口以后可能会变。
 
 默认角色 Pip 为项目原创像素机器人。加藤惠是可选的非官方同人主题，
 不属于 MIT 代码许可证，请勿暗示已获权利人授权。
 
 即插即用
 --------
-1. 解压整个「GrokUsagePet-v0.3.1-Windows-x64」文件夹，不要只拷贝 exe。
+1. 解压整个「GrokUsagePet-v0.3.3-Windows-x64」文件夹，不要只拷贝 exe。
 2. 本机先登录一次（登哪个就显示哪条；不必一直开着软件）：
    - SuperGrok：安装 Grok CLI 后运行  grok login
    - Grok Bot 和 Cursor 额度：打开 Cursor 并登录
+   - Codex：本机 ChatGPT 登录过 Codex（codex login），不要用纯 API Key 模式
 3. Windows：双击 GrokUsagePet.exe
 4. 右键角色 → 设置：
    - 开关要显示的额度条
    - 开关「随 Grok Build 启动」「随 Cursor 启动」
+     打开后，启动或重新打开 Grok / Cursor 会出现宠物。右键退出后不会在软件仍运行时再被拉起，除非重新启动 Grok 或 Cursor，或自己再打开宠物。
 
 查额度
 ------
 双击 exe 即可拉取，不需要当时正在运行 Grok Build 或 Cursor。
 大约每 60 秒刷新；右键「刷新额度」会立刻再抓。
-睡眠唤醒后 SuperGrok 会自行用本机 refresh token 续期，不必再开 Grok。
+睡眠唤醒后 SuperGrok / Codex 会自行用本机 refresh token 续期，不必再开对应软件。
 若 SuperGrok 仍空白并提示登录过期，再运行一次  grok login。
-本程序只读取账单，不消耗对话 token。
-如果只有 Grok 或 Cursor 其中一边登录，另一边空白属于正常情况。
-如果本次两边都抓取失败，程序会保留上一次成功额度，不会用空数据覆盖。
+若 Codex 一条空白，请确认已 `codex login`（ChatGPT 套餐），然后在设置里打开 Codex。深色是 5 小时窗口，浅色是周额度。
+本程序只读取账单，不消耗对话 token，也不会把登录文件打进压缩包或上传。
+如果只有其中一边登录，另一边空白属于正常情况。
+如果本次所有来源都抓取失败，程序会保留上一次成功额度，不会用空数据覆盖。
 
 用法
 ----
@@ -37,13 +40,13 @@ Grok Usage Pet
 - 鼠标停在某一条上：显示重置时间
 - 鼠标离开：额度条收起
 - 拖动角色移动位置
-- 双击：固定 / 取消固定额度条（只在本次运行中生效，重启后默认收起）
+- 双击：固定 / 取消固定额度条
 - 右键 → 退出宠物
 - 快捷方式 / 设置窗口图标使用当前默认 Original 主题
 - 右键 → 设置 → 形象：可在「Original / Pip」和「Megumi Kato」之间切换
 
-从旧版升级
-----------
+和上一版的关系
+--------------
 程序统一使用  %LOCALAPPDATA%\GrokUsagePet。
 首次运行会在新目录没有同名文件时，从旧 GrokUsagePetKawaii 目录复制设置
 和最近额度；旧目录不会被删除。
@@ -58,5 +61,13 @@ Grok CLI 或 Cursor 至少登录过其中一个，对应额度才能显示。
 安全与发布边界
 ------------
 - 本程序不会把 auth.json、Cursor 数据库、额度快照或日志打进发布压缩包。
+- 加藤惠形象为非官方同人素材，仅供个人、非商业使用。
 - 代码采用 MIT 许可证；角色素材适用独立说明，详见 ASSETS_NOTICE.md。
-- 加藤惠形象为非官方同人素材，不表示已获授权。
+
+反馈与建议
+----------
+- 故障和功能建议：https://github.com/liruilong0805/grok-usage-pet/issues/new/choose
+- 问答、主题想法与投票：https://github.com/liruilong0805/grok-usage-pet/discussions
+- 安全问题请使用 GitHub 私密漏洞报告，不要发布到公开 Issue。
+
+提交前请删除邮箱、访问令牌、auth.json、state.vscdb、额度快照、私人路径和完整日志。

@@ -1,82 +1,86 @@
-# Grok Usage Pet
+# Grok 额度宠物
 
-一个常驻桌面的透明小宠物，用一眼能懂的方式显示 SuperGrok、Grok Bot 和
-Cursor 额度与重置时间。当前版本：**0.3.1**。
+Current release: **0.3.3** (`v0.3.3`).
 
-<p>
-  <img src="skins/original/app.png" alt="Original Pip theme" width="96">
-  <img src="skins/megumi-kato/app.png" alt="Optional Megumi Kato fan theme" width="96">
-</p>
+Unofficial desktop pet for SuperGrok weekly, Grok Bot weekly, Cursor monthly pools, and locally signed-in Codex quota windows. Not an xAI, Cursor, or OpenAI product. Program code is MIT licensed; character assets have separate terms in [ASSETS_NOTICE.md](ASSETS_NOTICE.md).
 
-> 非 xAI、Cursor 或 OpenAI 官方产品。程序代码采用 MIT 许可证；角色素材
-> 另有边界说明，见 [ASSETS_NOTICE.md](ASSETS_NOTICE.md)。
+Git metadata for this mixed working directory is maintained outside `D:\ai`; do not initialize another repository inside it.
 
-## 下载与使用
+End-user instructions: [使用说明.txt](使用说明.txt)
 
-从 [GitHub Releases](https://github.com/liruilong0805/grok-usage-pet/releases)
-下载 `GrokUsagePet-v0.3.1-Windows-x64.zip`，完整解压后双击
-`GrokUsagePet.exe`。Windows 10/11 无需安装 Python。
+## Run from source
 
-至少登录一个数据来源：
-
-- SuperGrok：通过 Grok CLI 完成 `grok login`；
-- Grok Bot / Cursor：在 Cursor 中登录。
-
-鼠标靠近宠物会展开额度，悬停可看重置时间；拖动可移动，双击可在本次运行中固定，
-右键可刷新、切换主题或退出。更完整的中文说明见
-[docs/USAGE.zh-CN.md](docs/USAGE.zh-CN.md)。
-
-## 主题
-
-- **Original / Pip**：项目原创默认主题，可自由随 MIT 项目使用；
-- **Megumi Kato**：可选的非官方同人主题，不属于 MIT 代码许可证，也不
-  表示获得权利人授权。
-
-程序只从 `skins/<id>/` 加载主题。主题缺失或损坏时会回退到 Original。
-
-## 隐私
-
-本项目没有遥测、广告、崩溃上报、机器指纹或自动更新。它读取本机已有的
-Grok 与 Cursor 登录信息；Cursor 数据库以只读方式打开。Grok access token
-过期时，会通过账户配置的 OIDC discovery 找到刷新地址，并原子更新原有
-`auth.json`。
-
-网络请求仅面向配置的 Grok OIDC issuer、`cli-chat-proxy.grok.com` 和
-`api2.cursor.sh`。额度快照保存在 `%LOCALAPPDATA%\GrokUsagePet`，其中可能
-包含 Cursor 邮箱、套餐和接口错误，应视为私人数据。详见
-[SECURITY.md](SECURITY.md)。
-
-## 从源码运行
-
-需要 Python 3.12：
-
-```powershell
-python -m pip install -r requirements.txt
+```text
 pythonw pet.py
 ```
 
-离线测试不会联网、打开 Tk 窗口或读取真实凭据：
+Data is stored in `%LOCALAPPDATA%\GrokUsagePet`. A first run can copy missing state from the legacy `%LOCALAPPDATA%\GrokUsagePetKawaii` directory without deleting it.
+
+Fetching does not require Grok Build, Cursor, or Codex to be running. SuperGrok and ChatGPT-login Codex sessions can refresh their local OAuth credentials when needed; API-key Codex mode has no subscription quota percentage.
+
+## Test
+
+Tests do not open Tk, use the network, or read real Grok/Cursor credentials.
 
 ```powershell
-powershell -File .\run-tests.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\run-tests.ps1
 ```
 
-Windows 发布包：
+## Build the Windows release
+
+The verified toolchain is Python 3.12, Pillow 11.0.0, PyInstaller 6.22.2, and pyinstaller-hooks-contrib 2026.7.
 
 ```powershell
 python -m pip install -r requirements-build.txt
-powershell -File .\pack-windows.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\pack-windows.ps1
 ```
 
-构建脚本会测试、执行冻结版 smoke test、检查主题和敏感内容，再生成版本化
-ZIP 与 SHA256。开发、架构和发布细节分别见
-[DEVELOPMENT.md](docs/DEVELOPMENT.md)、[ARCHITECTURE.md](docs/ARCHITECTURE.md)
-和 [PACKAGING.md](docs/PACKAGING.md)。
+`GrokUsagePet.spec` is the single source of truth for PyInstaller resources. The packaging script runs tests, builds the executable, runs smoke tests, checks required skins and sensitive content, and creates a versioned ZIP with SHA256 verification.
 
-## 路线
+For a deterministic GUI lifecycle check without credentials or network access:
 
-近期重点是提升额度读取稳定性、主题制作体验和 Windows 发布质量。项目会
-保持“Grok 额度桌宠”的清晰定位；暂不扩展成通用 AI Dashboard。
+```powershell
+.\dist\GrokUsagePet\GrokUsagePet.exe --visual-smoke-test
+```
 
-版本记录见 [CHANGELOG.md](CHANGELOG.md)。欢迎提交已脱敏的问题报告和小型
-改进。代码许可证见 [LICENSE](LICENSE)。
+The preview renders fixed sample quotas and exits after three seconds without saving state.
+
+## Packs in `release/`
+
+| Zip | What |
+|-----|------|
+| `GrokUsagePet-v0.3.3-Windows-x64.zip` | Current release (`GrokUsagePet.exe`). Rebuild with `pack-windows.ps1`. |
+| `GrokUsagePet-kawaii.zip` | Legacy v0.2.0 compatibility archive; not the current release. |
+
+Do not copy `auth.json`, Cursor `state.vscdb`, or `pet_state.json` into a zip.
+
+## Snapshot contract
+
+- `complete`: at least one configured source returned usable quota data.
+- `partial`: retained for compatibility with older snapshots.
+- `failed`: neither source returned usable data. The previous usable snapshot is retained.
+- CLI exit codes: `0` for complete/partial, `1` for failed, and `2` for an internal error.
+
+## Layout
+
+- `pet.py` — Tk controller, animation, and quota bubble
+- `fetch_usage.py` — Grok/Cursor/Codex fetching and aggregation
+- `usage_model.py` — pure snapshot status and text formatting
+- `snapshot_store.py` — atomic public snapshot persistence
+- `cursor_hooks.py` — safe shared Cursor hook management
+- `skin_catalog.py` — skin discovery and manifest defaults
+- `pet_view_model.py` — pure UI quota mapping
+- `tests/` — offline unit and smoke tests
+- `skins/megumi-kato/` — complete example skin
+- `skins/original/` — complete default Original/Pip skin
+- `packaging/windows/` — portable launcher and watcher registration files
+
+Version changes are recorded in [CHANGELOG.md](CHANGELOG.md). Code licensing is in [LICENSE](LICENSE); artwork redistribution boundaries are documented separately.
+
+## Feedback and contributions
+
+- [Report a bug or request a feature](https://github.com/liruilong0805/grok-usage-pet/issues/new/choose)
+- [Ask questions, suggest themes, or vote on ideas](https://github.com/liruilong0805/grok-usage-pet/discussions)
+- [Report a security vulnerability privately](https://github.com/liruilong0805/grok-usage-pet/security/advisories/new)
+
+Before posting, remove email addresses, tokens, `auth.json`, `state.vscdb`, quota snapshots, and full logs. See [CONTRIBUTING.md](CONTRIBUTING.md) for the project scope and test requirements.

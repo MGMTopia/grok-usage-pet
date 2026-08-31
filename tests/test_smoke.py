@@ -38,7 +38,7 @@ class SourceSmokeTests(unittest.TestCase):
         snap = pet.visual_smoke_snapshot()
         self.assertEqual(snap["status"], fetch_usage.STATUS_COMPLETE)
         self.assertIsNone(snap["errors"])
-        self.assertEqual(set(pet.build_pools(snap)), {"sg", "bot", "cm", "om"})
+        self.assertEqual(set(pet.build_pools(snap)), {"sg", "bot", "cm", "om", "cx"})
 
     def test_default_skin_metadata_matches_sprite_dimensions(self) -> None:
         spec = json.loads((ROOT / "skins" / "original" / "pet.json").read_text(encoding="utf-8"))
@@ -71,6 +71,10 @@ class SourceSmokeTests(unittest.TestCase):
         self.assertEqual(pet.DEFAULT_SKIN_ID, "original")
         self.assertEqual(specs[0]["id"], "original")
         self.assertEqual(pet.activate_skin("missing-theme"), "original")
+        self.assertEqual(pet.activate_skin("..\\evil"), "original")
+        self.assertEqual(pet.activate_skin("../evil"), "original")
+        self.assertFalse(pet.skin_ready(".."))
+        self.assertFalse(pet.skin_ready("original/../../evil"))
 
     def test_skin_themes_are_distinct_and_invalid_tokens_fall_back(self) -> None:
         try:
@@ -111,6 +115,25 @@ class SourceSmokeTests(unittest.TestCase):
             self.assertNotIn("pinned", persisted)
             self.assertNotIn("expanded", persisted)
 
+    def test_legacy_codex_toggles_merge_into_one_row(self) -> None:
+        cases = (
+            ({"cx5": True, "cxw": True}, True),
+            ({"cx5": False, "cxw": True}, True),
+            ({"cx5": True, "cxw": False}, True),
+            ({"cx5": False, "cxw": False}, False),
+            ({"cx": False, "cx5": True, "cxw": True}, False),
+        )
+        for raw, expected in cases:
+            with self.subTest(raw=raw):
+                with tempfile.TemporaryDirectory() as td:
+                    state_file = Path(td) / "pet_state.json"
+                    state_file.write_text(json.dumps({"enabled": raw}), encoding="utf-8")
+                    with mock.patch.object(pet, "STATE_FILE", state_file):
+                        enabled = pet.load_enabled()
+                self.assertNotIn("cx5", enabled)
+                self.assertNotIn("cxw", enabled)
+                self.assertEqual(enabled["cx"], expected)
+
     def test_watcher_launch_policy_is_pure(self) -> None:
         with (
             mock.patch.object(pet, "grok_autostart_on", return_value=True),
@@ -118,6 +141,18 @@ class SourceSmokeTests(unittest.TestCase):
         ):
             self.assertTrue(watch_apps.want_launch({"grok.exe"}))
             self.assertFalse(watch_apps.want_launch({"cursor.exe"}))
+
+    def test_manual_close_blocks_autostart_until_app_restarts(self) -> None:
+        dismiss = {"dismissed": True, "grok_pids": [10], "cursor_pids": [20]}
+        with (
+            mock.patch.object(pet, "grok_autostart_on", return_value=True),
+            mock.patch.object(pet, "cursor_autostart_on", return_value=True),
+        ):
+            self.assertFalse(watch_apps.allow_autostart({"grok.exe": {10}, "cursor.exe": {20}}, dismiss=dismiss))
+            self.assertFalse(watch_apps.allow_autostart({"grok.exe": {10}, "agent.exe": {99}}, dismiss=dismiss))
+            self.assertTrue(watch_apps.allow_autostart({"grok.exe": {11}, "cursor.exe": {20}}, dismiss=dismiss))
+            self.assertTrue(watch_apps.allow_autostart({"grok.exe": {10}, "cursor.exe": {21}}, dismiss=dismiss))
+            self.assertTrue(watch_apps.allow_autostart({"grok.exe": {10}}, dismiss=None))
 
 
 class ReleaseSafetySmokeTests(unittest.TestCase):

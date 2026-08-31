@@ -15,6 +15,7 @@ ROOT_PUBLIC_FILES = (
     ROOT / "NOTICE.md",
     ROOT / "ASSETS_NOTICE.md",
     ROOT / "SECURITY.md",
+    ROOT / "CONTRIBUTING.md",
     ROOT / "CHANGELOG.md",
     ROOT / "LICENSE",
     ROOT / "GrokUsagePet.spec",

@@ -7,7 +7,7 @@ The verified Windows toolchain is Python 3.12, Pillow 11.0.0, PyInstaller
 
 ```powershell
 python -m pip install -r requirements-build.txt
-powershell -File .\pack-windows.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\pack-windows.ps1
 ```
 
 The current script:

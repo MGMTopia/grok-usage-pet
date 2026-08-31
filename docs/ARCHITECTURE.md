@@ -15,9 +15,10 @@ Grok Usage Pet
 ## Quota engine
 
 `fetch_usage.py` reads existing local sessions and normalizes provider results
-into `complete`, `partial`, or `failed` snapshots. `snapshot_store.py` writes
-usable snapshots atomically and retains the last usable result when every
-provider fails.
+into `complete`, `partial`, or `failed` snapshots from SuperGrok, Cursor
+(Grok Bot plus two monthly pools), and ChatGPT-login Codex. `snapshot_store.py`
+writes usable snapshots atomically into the OS app-data folder and retains the
+last usable result when every provider fails.
 
 ## Pet engine
 

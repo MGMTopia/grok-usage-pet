@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions, ideas, and polls
+    url: https://github.com/liruilong0805/grok-usage-pet/discussions
+    about: Use Discussions for help, open-ended ideas, theme proposals, and voting.
+  - name: Private security report
+    url: https://github.com/liruilong0805/grok-usage-pet/security/advisories/new
+    about: Report vulnerabilities privately. Never post credentials in an issue.

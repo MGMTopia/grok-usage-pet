@@ -16,9 +16,11 @@ state.vscdb
 usage.json
 usage.txt
 pet_state.json
+dismissed.json
 *.log
 pet.lock
 pet.raise
 GITHUB备份说明.txt
+GrokUsagePetKawaii.spec
 .DS_Store
 Thumbs.db
