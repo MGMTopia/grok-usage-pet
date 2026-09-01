@@ -2,8 +2,14 @@
 
 ## Unreleased
 
+## 0.3.5 — 2026-09-01
+
+Cleanup and uninstall update. Git tag: `v0.3.5`.
+
 - Add a confirmed in-app purge that removes autostart, shortcuts, and local
   quota data without touching Grok, Cursor, or Codex login files.
+- Keep `pet.py --uninstall` / `GrokUsagePet.exe --uninstall` on the same path.
+- Document the cleanup steps in user-facing instructions.
 
 ## 0.3.4 — 2026-09-01
 

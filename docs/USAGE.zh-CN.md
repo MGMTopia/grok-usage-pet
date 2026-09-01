@@ -1,7 +1,8 @@
 # Grok Usage Pet 使用说明
 
 Grok Usage Pet 是 Windows 10/11 上的透明桌面宠物，用来查看 SuperGrok、
-Grok Bot 和 Cursor 的额度与重置时间。它不是 xAI 或 Cursor 官方软件。
+Grok Bot、Cursor 和 Codex 的额度与重置时间。它不是 xAI、Cursor 或 OpenAI
+官方软件。
 
 ## 安装
 
@@ -9,7 +10,8 @@ Grok Bot 和 Cursor 的额度与重置时间。它不是 xAI 或 Cursor 官方�
 2. 解压整个文件夹，不要只复制 EXE。
 3. 至少登录一个数据来源：
    - SuperGrok：通过 Grok CLI 完成登录；
-   - Grok Bot / Cursor：在 Cursor 中完成登录。
+   - Grok Bot / Cursor：在 Cursor 中完成登录；
+   - Codex：本机 ChatGPT 登录过 Codex（不要用纯 API Key 模式）。
 4. 双击 `GrokUsagePet.exe`。
 
 首次运行未签名版本时，Windows SmartScreen 可能要求选择“仍要运行”。
@@ -32,8 +34,8 @@ Grok Bot 和 Cursor 的额度与重置时间。它不是 xAI 或 Cursor 官方�
 
 - 读取 Grok 的 `auth.json`；过期时可能通过 OIDC 刷新并原子写回 token；
 - 以只读方式打开 Cursor 的 `state.vscdb`；
-- 只访问配置的 Grok OIDC issuer、`cli-chat-proxy.grok.com` 和
-  `api2.cursor.sh`；
+- 只访问配置的 Grok OIDC issuer、`cli-chat-proxy.grok.com`、
+  `api2.cursor.sh`，以及 ChatGPT 登录 Codex 时的 OpenAI 额度接口；
 - 不上传源码、项目文件、聊天或提示词；
 - 没有遥测、广告或自动更新。
 

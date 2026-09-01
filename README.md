@@ -1,6 +1,6 @@
 # Grok 额度宠物
 
-Current release: **0.3.4** (`v0.3.4`).
+Current release: **0.3.5** (`v0.3.5`).
 
 Unofficial desktop pet for SuperGrok weekly, Grok Bot weekly, Cursor monthly pools, and locally signed-in Codex quota windows. Not an xAI, Cursor, or OpenAI product. Program code is MIT licensed; character assets have separate terms in [ASSETS_NOTICE.md](ASSETS_NOTICE.md).
 
@@ -47,7 +47,7 @@ The preview renders fixed sample quotas and exits after three seconds without sa
 
 | Zip | What |
 |-----|------|
-| `GrokUsagePet-v0.3.4-Windows-x64.zip` | Current release (`GrokUsagePet.exe`). Rebuild with `pack-windows.ps1`. |
+| `GrokUsagePet-v0.3.5-Windows-x64.zip` | Current release (`GrokUsagePet.exe`). Rebuild with `pack-windows.ps1`. |
 | `GrokUsagePet-kawaii.zip` | Legacy v0.2.0 compatibility archive; not the current release. |
 
 Do not copy `auth.json`, Cursor `state.vscdb`, or `pet_state.json` into a zip.
