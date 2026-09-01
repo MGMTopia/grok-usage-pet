@@ -50,3 +50,9 @@ Grok Bot 和 Cursor 的额度与重置时间。它不是 xAI 或 Cursor 官方�
 `%LOCALAPPDATA%\GrokUsagePet`；旧目录不会被删除。
 
 主题和角色素材边界见 [ASSETS_NOTICE.md](../ASSETS_NOTICE.md)。
+
+## 卸载
+
+设置 → 卸载 →「清除本机数据并退出」，或运行 `GrokUsagePet.exe --uninstall`。
+这会删除自启、桌面快捷方式和本地额度数据，不会退出 Grok / Cursor / Codex，
+也不会删除解压或 clone 出来的程序文件夹。

@@ -8,6 +8,7 @@ import math
 import os
 import queue
 import shlex
+import shutil
 import subprocess
 import sys
 import threading
@@ -809,6 +810,106 @@ def uninstall_cursor_hook() -> None:
     cursor_hooks.uninstall(CURSOR_HOOK_FILE, cursor_hook_command())
 
 
+APP_TASK_NAMES = (
+    "GrokUsagePetLaunch",
+    "GrokUsagePetWatch",
+    "GrokUsagePetKawaiiLaunch",
+    "GrokUsagePetKawaiiWatch",
+)
+APP_SHORTCUT_NAMES = (
+    "Grok额度宠物.lnk",
+    "Grok额度宠物-可爱版.lnk",
+    "Grok额度宠物.command",
+    "Grok额度宠物-可爱版.command",
+)
+LEGACY_DATA_NAMES = ("GrokUsagePetKawaii",)
+
+
+def app_data_directories() -> list[Path]:
+    dirs = [DATA_DIR]
+    parent = DATA_DIR.parent
+    for name in LEGACY_DATA_NAMES:
+        path = parent / name
+        if path != DATA_DIR:
+            dirs.append(path)
+    return dirs
+
+
+def remove_scheduled_tasks() -> list[str]:
+    removed: list[str] = []
+    if os.name != "nt":
+        return removed
+    flags = CREATE_NO_WINDOW
+    for name in APP_TASK_NAMES:
+        ran = subprocess.run(
+            ["schtasks", "/Delete", "/TN", name, "/F"],
+            capture_output=True,
+            creationflags=flags,
+        )
+        if ran.returncode == 0:
+            removed.append(name)
+    return removed
+
+
+def remove_desktop_shortcuts(desktop: Path | None = None) -> list[Path]:
+    folder = desktop if desktop is not None else desktop_dir()
+    gone: list[Path] = []
+    for name in APP_SHORTCUT_NAMES:
+        path = folder / name
+        try:
+            if path.is_file() or path.is_symlink():
+                path.unlink()
+                gone.append(path)
+        except OSError:
+            continue
+    return gone
+
+
+def purge_local_residue() -> dict[str, list[str]]:
+    """Remove autostart, shortcuts, and app data. Never touch product logins."""
+    errors: list[str] = []
+    try:
+        uninstall_hook()
+    except Exception as exc:
+        errors.append(f"Grok hook: {exc}")
+    try:
+        uninstall_cursor_hook()
+    except Exception as exc:
+        errors.append(f"Cursor hook: {exc}")
+    tasks: list[str] = []
+    try:
+        tasks = remove_scheduled_tasks()
+    except Exception as exc:
+        errors.append(f"scheduled tasks: {exc}")
+    shortcuts: list[str] = []
+    try:
+        shortcuts = [str(path) for path in remove_desktop_shortcuts()]
+    except Exception as exc:
+        errors.append(f"shortcuts: {exc}")
+    data: list[str] = []
+    for path in app_data_directories():
+        if not path.exists():
+            continue
+        try:
+            shutil.rmtree(path)
+            data.append(str(path))
+        except OSError as exc:
+            errors.append(f"{path}: {exc}")
+    return {"tasks": tasks, "shortcuts": shortcuts, "data": data, "errors": errors}
+
+
+def format_purge_report(result: dict[str, list[str]]) -> str:
+    lines = [
+        "不会删除 Grok / Cursor / Codex 登录，也不会删除程序文件夹。",
+        f"计划任务：{', '.join(result['tasks']) or '无'}",
+        f"快捷方式：{len(result['shortcuts'])} 个",
+        f"数据目录：{len(result['data'])} 个",
+    ]
+    if result["errors"]:
+        lines.append("未完成：" + "；".join(result["errors"]))
+    return "\n".join(lines)
+
+
 def desktop_dir() -> Path:
     if os.name == "nt":
         try:
@@ -1536,6 +1637,25 @@ class UsagePet:
         add_switch(inner, "随 Cursor 启动", self._cursor_start_var, self._on_toggle_cursor_start)
         hint("打开 Grok 或 Cursor 后几秒内出现。登录 Windows 后会在后台等待这两个软件。")
 
+        heading("卸载")
+        inner = card()
+        tk.Button(
+            inner,
+            text="清除本机数据并退出",
+            command=self._confirm_purge,
+            bg=card_bg,
+            fg=ui["settings_text"],
+            font=ui["font_ui"],
+            activebackground=ui.get("settings_select", card_bg),
+            activeforeground=ui["settings_text"],
+            relief="flat",
+            bd=0,
+            highlightthickness=0,
+            cursor="hand2",
+            anchor="w",
+        ).pack(fill="x", pady=2)
+        hint("删除自启、桌面快捷方式和额度快照，然后退出。不会退出 Grok / Cursor / Codex，也不会删除程序文件夹。")
+
         win.protocol("WM_DELETE_WINDOW", win.destroy)
 
     def _paint_skin_chips(self) -> None:
@@ -1642,9 +1762,9 @@ class UsagePet:
         self._cursor_start_var.set(cursor_autostart_on())
         sync_watcher()
 
-    def quit(self) -> None:
+    def quit(self, *, keep_data: bool = True) -> None:
         self._closing = True
-        if not self._preview_mode:
+        if keep_data and not self._preview_mode:
             self.persist()
             try:
                 import watch_apps
@@ -1706,6 +1826,72 @@ class UsagePet:
         dlg.bind("<Return>", lambda _e: dlg.destroy())
         dlg.transient(self.root)
         dlg.grab_set()
+
+    def _confirm_purge(self) -> None:
+        ui = style()
+        parent = self._settings if self._settings is not None and self._settings.winfo_exists() else self.root
+        dlg = tk.Toplevel(parent)
+        dlg.title("清除本机数据")
+        dlg.attributes("-topmost", True)
+        dlg.resizable(False, False)
+        dlg.configure(bg=ui["settings_bg"])
+        self._apply_app_icon(dlg)
+        tk.Label(
+            dlg,
+            text=(
+                "将删除自启、桌面快捷方式和额度快照，然后退出宠物。\n"
+                "不会动 Grok / Cursor / Codex 的登录。\n"
+                "解压或 clone 的程序文件夹请自行删除。"
+            ),
+            bg=ui["settings_bg"],
+            fg=ui["settings_text"],
+            font=ui["font_ui"],
+            wraplength=300,
+            justify="left",
+        ).pack(padx=18, pady=(16, 10))
+        row = tk.Frame(dlg, bg=ui["settings_bg"])
+        row.pack(fill="x", padx=18, pady=(0, 14))
+
+        def cancel() -> None:
+            dlg.destroy()
+
+        def confirm() -> None:
+            dlg.destroy()
+            self._run_purge()
+
+        tk.Button(
+            row,
+            text="取消",
+            command=cancel,
+            bg=ui.get("inner", "#ffffff"),
+            fg=ui["settings_text"],
+            font=ui["font"],
+            relief="flat",
+            bd=0,
+        ).pack(side="right")
+        tk.Button(
+            row,
+            text="清除并退出",
+            command=confirm,
+            bg=ui.get("accent", "#c94b4b"),
+            fg="#ffffff",
+            font=ui["font_title"],
+            relief="flat",
+            bd=0,
+        ).pack(side="right", padx=(0, 8))
+        dlg.bind("<Escape>", lambda _e: cancel())
+        dlg.transient(parent)
+        dlg.grab_set()
+        dlg.focus_force()
+
+    def _run_purge(self) -> None:
+        result = purge_local_residue()
+        report = format_purge_report(result)
+        if result["errors"]:
+            self._toast(report)
+            self.root.after(50, lambda: self.quit(keep_data=False))
+            return
+        self.quit(keep_data=False)
 
     def open_data_dir(self) -> None:
         DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -2236,8 +2422,10 @@ def main() -> None:
         print(create_desktop_shortcut())
         return
     if "--uninstall" in args:
-        uninstall_hook()
-        print("uninstalled autostart hook")
+        result = purge_local_residue()
+        print(format_purge_report(result), flush=True)
+        if result["errors"]:
+            raise SystemExit(1)
         return
     if "--cli" in args:
         snap = fu.snapshot()

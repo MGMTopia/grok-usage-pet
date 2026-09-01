@@ -12,7 +12,7 @@ End-user instructions: [使用说明.txt](使用说明.txt)
 pythonw pet.py
 ```
 
-Data is stored in `%LOCALAPPDATA%\GrokUsagePet`. A first run can copy missing state from the legacy `%LOCALAPPDATA%\GrokUsagePetKawaii` directory without deleting it.
+Data is stored in `%LOCALAPPDATA%\GrokUsagePet`. A first run can copy missing state from the legacy `%LOCALAPPDATA%\GrokUsagePetKawaii` directory without deleting it. Settings → 卸载, or `--uninstall`, removes that local residue without touching Grok, Cursor, or Codex logins.
 
 Fetching does not require Grok Build, Cursor, or Codex to be running. SuperGrok and ChatGPT-login Codex sessions can refresh their local OAuth credentials when needed; API-key Codex mode has no subscription quota percentage.
 

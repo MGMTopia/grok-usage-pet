@@ -279,5 +279,85 @@ class CursorHookTests(unittest.TestCase):
         self.assertEqual(json.loads(self.hooks_file.read_text(encoding="utf-8")), payload)
 
 
+class PurgeResidueTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        root = Path(self.tmp.name)
+        self.data = root / "GrokUsagePet"
+        self.legacy = root / "GrokUsagePetKawaii"
+        self.desktop = root / "Desktop"
+        self.hooks = root / "hooks.json"
+        self.grok_hook = root / "usage-pet.json"
+        self.data.mkdir()
+        self.legacy.mkdir()
+        self.desktop.mkdir()
+        (self.data / "usage.json").write_text('{"plan":"keep-private"}', encoding="utf-8")
+        (self.legacy / "pet_state.json").write_text("{}", encoding="utf-8")
+        (self.desktop / "Grok额度宠物.lnk").write_text("shortcut", encoding="utf-8")
+        (self.desktop / "notes.txt").write_text("keep", encoding="utf-8")
+        self.grok_hook.write_text("{}", encoding="utf-8")
+        self.hooks.write_text(
+            json.dumps(
+                {
+                    "hooks": {
+                        "sessionStart": [
+                            {"command": "keep-me", "timeout": 10},
+                            {
+                                "command": "our.bat",
+                                "timeout": 15,
+                                "managedBy": pet.CURSOR_HOOK_MARKER,
+                            },
+                        ]
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        self.auth = fu.grok_auth_file()
+        self.auth.parent.mkdir(parents=True, exist_ok=True)
+        self.auth.write_text('{"account": {"key": "secret"}}', encoding="utf-8")
+        self.patches = [
+            mock.patch.object(pet, "DATA_DIR", self.data),
+            mock.patch.object(pet, "HOOK_FILE", self.grok_hook),
+            mock.patch.object(pet, "CURSOR_HOOK_FILE", self.hooks),
+            mock.patch.object(pet, "desktop_dir", return_value=self.desktop),
+            mock.patch.object(pet, "cursor_hook_command", return_value="our.bat"),
+            mock.patch.object(pet.subprocess, "run", side_effect=self._fake_schtasks),
+        ]
+        for patcher in self.patches:
+            patcher.start()
+
+    def tearDown(self) -> None:
+        for patcher in reversed(self.patches):
+            patcher.stop()
+        self.tmp.cleanup()
+
+    @staticmethod
+    def _fake_schtasks(args, **_kwargs):
+        result = mock.Mock()
+        result.returncode = 1
+        if len(args) >= 4 and args[:3] == ["schtasks", "/Delete", "/TN"]:
+            if args[3] in pet.APP_TASK_NAMES:
+                result.returncode = 0
+        return result
+
+    def test_purge_removes_app_residue_and_keeps_logins(self) -> None:
+        result = pet.purge_local_residue()
+
+        self.assertFalse(self.data.exists())
+        self.assertFalse(self.legacy.exists())
+        self.assertFalse(self.grok_hook.exists())
+        self.assertFalse((self.desktop / "Grok额度宠物.lnk").exists())
+        self.assertEqual((self.desktop / "notes.txt").read_text(encoding="utf-8"), "keep")
+        saved = json.loads(self.hooks.read_text(encoding="utf-8"))
+        self.assertEqual(saved["hooks"]["sessionStart"], [{"command": "keep-me", "timeout": 10}])
+        self.assertEqual(json.loads(self.auth.read_text(encoding="utf-8"))["account"]["key"], "secret")
+        self.assertIn(str(self.data), result["data"])
+        self.assertIn(str(self.legacy), result["data"])
+        self.assertEqual(result["errors"], [])
+        if os.name == "nt":
+            self.assertEqual(set(result["tasks"]), set(pet.APP_TASK_NAMES))
+
+
 if __name__ == "__main__":
     unittest.main()

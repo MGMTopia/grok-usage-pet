@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add a confirmed in-app purge that removes autostart, shortcuts, and local
+  quota data without touching Grok, Cursor, or Codex login files.
+
 ## 0.3.4 — 2026-09-01
 
 Security and release-integrity patch. Git tag: `v0.3.4`.
