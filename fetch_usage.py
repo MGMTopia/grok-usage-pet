@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import hashlib
 import json
 import os
 import shutil
@@ -59,6 +60,11 @@ GROK_OIDC_HOST = "auth.x.ai"
 CODEX_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
 WATCH_SECS = 60
 REFRESH_SKEW_SECS = 300
+_AUTH_REVISION_UNSET = object()
+
+
+class AuthFileChangedError(RuntimeError):
+    """Raised when another process updates an auth file during refresh."""
 
 
 def is_frozen() -> bool:
@@ -189,8 +195,58 @@ def _oidc_token_url(issuer: str) -> str:
     return _grok_https_url(str(token_url))
 
 
-def _write_auth(path: Path, data: dict) -> None:
+def _auth_revision(path: Path) -> str | None:
+    try:
+        raw = path.read_bytes()
+    except FileNotFoundError:
+        return None
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _read_auth_json(path: Path) -> tuple[dict, str]:
+    raw = path.read_bytes()
+    payload = json.loads(raw.decode("utf-8"))
+    if not isinstance(payload, dict):
+        raise RuntimeError("登录文件顶层必须是对象")
+    return payload, hashlib.sha256(raw).hexdigest()
+
+
+def _windows_replace_file(replaced: Path, replacement: Path) -> None:
+    import ctypes
+    from ctypes import wintypes
+
+    replace_file = ctypes.WinDLL("kernel32", use_last_error=True).ReplaceFileW
+    replace_file.argtypes = [
+        wintypes.LPCWSTR,
+        wintypes.LPCWSTR,
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.LPVOID,
+        wintypes.LPVOID,
+    ]
+    replace_file.restype = wintypes.BOOL
+    if not replace_file(str(replaced), str(replacement), None, 0, None, None):
+        error = ctypes.get_last_error()
+        raise OSError(error, ctypes.FormatError(error), str(replaced))
+
+
+def _replace_auth_file(tmp: Path, path: Path) -> None:
+    if os.name == "nt" and path.exists():
+        # ReplaceFileW preserves the replaced file's DACL, encryption, and streams.
+        _windows_replace_file(path, tmp)
+    else:
+        os.replace(tmp, path)
+
+
+def _write_auth(
+    path: Path,
+    data: dict,
+    *,
+    expected_revision: str | None | object = _AUTH_REVISION_UNSET,
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    if expected_revision is not _AUTH_REVISION_UNSET and _auth_revision(path) != expected_revision:
+        raise AuthFileChangedError("登录文件已被其他进程更新，已保留较新内容")
     original_mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else 0o600
     # Auth files must never become group/world-readable after token refresh.
     secure_mode = original_mode & 0o700
@@ -206,7 +262,9 @@ def _write_auth(path: Path, data: dict) -> None:
             fh.write("\n")
             fh.flush()
             os.fsync(fh.fileno())
-        os.replace(tmp, path)
+        if expected_revision is not _AUTH_REVISION_UNSET and _auth_revision(path) != expected_revision:
+            raise AuthFileChangedError("登录文件已被其他进程更新，已保留较新内容")
+        _replace_auth_file(tmp, path)
         if os.name != "nt":
             os.chmod(path, secure_mode)
     except Exception:
@@ -221,7 +279,13 @@ def _write_auth(path: Path, data: dict) -> None:
         raise
 
 
-def refresh_grok_auth(data: dict, account_id: str, entry: dict) -> dict:
+def refresh_grok_auth(
+    data: dict,
+    account_id: str,
+    entry: dict,
+    *,
+    expected_revision: str | None | object = _AUTH_REVISION_UNSET,
+) -> dict:
     refresh = entry.get("refresh_token")
     client_id = entry.get("oidc_client_id")
     issuer = entry.get("oidc_issuer") or GROK_OIDC_ISSUER
@@ -259,15 +323,15 @@ def refresh_grok_auth(data: dict, account_id: str, entry: dict) -> dict:
         end = datetime.now(timezone.utc) + timedelta(seconds=int(expires_in))
         entry["expires_at"] = end.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
     data[account_id] = entry
-    _write_auth(grok_auth_file(), data)
+    _write_auth(grok_auth_file(), data, expected_revision=expected_revision)
     return entry
 
 
-def load_token(*, force_refresh: bool = False) -> tuple[str, dict]:
+def load_token(*, force_refresh: bool = False, _allow_revision_retry: bool = True) -> tuple[str, dict]:
     auth_file = grok_auth_file()
     if not auth_file.exists():
         raise RuntimeError("未找到 Grok 登录，请先运行 grok login")
-    data = json.loads(auth_file.read_text(encoding="utf-8"))
+    data, revision = _read_auth_json(auth_file)
     if not data:
         raise RuntimeError("Grok 登录文件为空，请先运行 grok login")
     account_id, entry = next(iter(data.items()))
@@ -276,7 +340,16 @@ def load_token(*, force_refresh: bool = False) -> tuple[str, dict]:
     stale = force_refresh or _token_expired(entry, REFRESH_SKEW_SECS)
     if stale:
         try:
-            entry = refresh_grok_auth(data, str(account_id), entry)
+            entry = refresh_grok_auth(
+                data,
+                str(account_id),
+                entry,
+                expected_revision=revision,
+            )
+        except AuthFileChangedError:
+            if _allow_revision_retry:
+                return load_token(force_refresh=False, _allow_revision_retry=False)
+            raise
         except RuntimeError:
             if force_refresh or _token_expired(entry, 0) or not entry.get("key"):
                 raise
@@ -470,7 +543,11 @@ def _codex_window(raw: dict | None) -> dict:
     }
 
 
-def refresh_codex_auth(data: dict) -> dict:
+def refresh_codex_auth(
+    data: dict,
+    *,
+    expected_revision: str | None | object = _AUTH_REVISION_UNSET,
+) -> dict:
     tokens = data.get("tokens")
     if not isinstance(tokens, dict):
         raise RuntimeError("Codex 登录已过期，请先运行 codex login")
@@ -508,16 +585,16 @@ def refresh_codex_auth(data: dict) -> dict:
         tokens["id_token"] = payload["id_token"]
     data["tokens"] = tokens
     data["last_refresh"] = datetime.now(timezone.utc).isoformat()
-    _write_auth(codex_auth_file(), data)
+    _write_auth(codex_auth_file(), data, expected_revision=expected_revision)
     return data
 
 
-def load_codex_auth(*, force_refresh: bool = False) -> dict | None:
+def load_codex_auth(*, force_refresh: bool = False, _allow_revision_retry: bool = True) -> dict | None:
     path = codex_auth_file()
     if not path.exists():
         return None
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data, revision = _read_auth_json(path)
     except (OSError, json.JSONDecodeError):
         raise RuntimeError("Codex 登录文件损坏，请先运行 codex login")
     if not isinstance(data, dict):
@@ -533,9 +610,13 @@ def load_codex_auth(*, force_refresh: bool = False) -> dict | None:
     stale = force_refresh or (exp is not None and exp <= datetime.now(timezone.utc) + timedelta(seconds=REFRESH_SKEW_SECS))
     if stale:
         try:
-            data = refresh_codex_auth(data)
+            data = refresh_codex_auth(data, expected_revision=revision)
             tokens = data.get("tokens") or {}
             access = str(tokens.get("access_token") or "")
+        except AuthFileChangedError:
+            if _allow_revision_retry:
+                return load_codex_auth(force_refresh=False, _allow_revision_retry=False)
+            raise
         except RuntimeError:
             if force_refresh or not access:
                 raise

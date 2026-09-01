@@ -24,6 +24,7 @@ else:
 
 import fetch_usage as fu
 import cursor_hooks
+import skin_catalog
 from app_version import APP_VERSION
 from pet_view_model import (
     POOL_META,
@@ -564,13 +565,39 @@ def _to_photo(im):
     return ImageTk.PhotoImage(im)
 
 
+def _open_skin_image(
+    path: Path,
+    allowed_formats: set[str],
+    *,
+    expected_size: tuple[int, int] | None = None,
+):
+    if Image is None:
+        return None
+    try:
+        with Image.open(path) as source:
+            image_format = str(source.format or "").upper()
+            width, height = source.size
+            if image_format not in allowed_formats:
+                return None
+            if width <= 0 or height <= 0 or width * height > skin_catalog.MAX_ATLAS_PIXELS:
+                return None
+            if expected_size is not None and source.size != expected_size:
+                return None
+            source.load()
+            return source.convert("RGBA")
+    except (OSError, SyntaxError, ValueError, Image.DecompressionBombError):
+        return None
+
+
 def load_sprite(name: str, height: int):
     if Image is None or ImageTk is None:
         return None
     path = ASSETS / name
     if not path.exists():
         return None
-    im = Image.open(path).convert("RGBA")
+    im = _open_skin_image(path, {"ICO", "PNG", "WEBP"})
+    if im is None:
+        return None
     ratio = height / im.height
     im = im.resize((max(1, int(im.width * ratio)), height), Image.Resampling.NEAREST)
     return _to_photo(im)
@@ -582,8 +609,8 @@ def load_atlas_frames() -> dict[str, list]:
     path = ASSETS / ATLAS_NAME
     if not path.exists():
         return {}
-    atlas = Image.open(path).convert("RGBA")
-    if atlas.size != ATLAS_SIZE:
+    atlas = _open_skin_image(path, {"WEBP"}, expected_size=ATLAS_SIZE)
+    if atlas is None:
         return {}
     scale = SPRITE_H / CELL_H
     dw = max(1, int(CELL_W * scale))

@@ -65,6 +65,15 @@ class SourceSmokeTests(unittest.TestCase):
                 self.assertEqual(atlas["columns"] * atlas["cellWidth"], atlas["width"])
                 self.assertEqual(atlas["rows"] * atlas["cellHeight"], atlas["height"])
 
+    def test_skin_loader_rejects_disguised_non_webp(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "spritesheet.webp"
+            Image.new("RGBA", (8, 8), (0, 0, 0, 0)).save(path, format="PNG")
+
+            self.assertIsNone(
+                pet._open_skin_image(path, {"WEBP"}, expected_size=(8, 8))
+            )
+
     def test_original_is_the_default_and_first_theme(self) -> None:
         specs = pet.list_skins()
         self.assertGreaterEqual(len(specs), 2)

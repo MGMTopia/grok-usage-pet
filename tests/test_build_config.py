@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import unittest
 from pathlib import Path
 
@@ -25,6 +26,9 @@ class BuildConfigTests(unittest.TestCase):
         self.assertIn("CHANGELOG.md", script)
         self.assertIn("NOTICE.md", script)
         self.assertIn("ASSETS_NOTICE.md", script)
+        self.assertIn("THIRD_PARTY_NOTICES.md", script)
+        self.assertIn("PILLOW_LICENSE.txt", script)
+        self.assertIn("PYTHON_LICENSE.txt", script)
         self.assertIn("LICENSE", script)
         self.assertIn(".sha256", script)
         self.assertIn("secretPatterns", script)
@@ -32,10 +36,13 @@ class BuildConfigTests(unittest.TestCase):
     def test_dependency_files_cover_runtime_and_builder(self) -> None:
         runtime = (ROOT / "requirements.txt").read_text(encoding="utf-8")
         build = (ROOT / "requirements-build.txt").read_text(encoding="utf-8")
-        self.assertIn("Pillow==11.0.0", runtime)
+        lock = (ROOT / "requirements-build.lock").read_text(encoding="utf-8")
+        self.assertIn("Pillow==12.3.0", runtime)
         self.assertIn("PyInstaller==6.22.2", build)
         self.assertIn("pyinstaller-hooks-contrib==2026.7", build)
         self.assertIn("-r requirements.txt", build)
+        self.assertIn("Pillow==12.3.0", lock)
+        self.assertIn("--hash=sha256:", lock)
 
     def test_version_is_documented_consistently(self) -> None:
         version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
@@ -59,6 +66,20 @@ class BuildConfigTests(unittest.TestCase):
         self.assertIn('if ($env:GITHUB_REF_NAME -ne $expected)', workflow)
         self.assertIn("CHANGELOG section for $version not found", workflow)
         self.assertIn("--notes-file release-notes.md", workflow)
+        self.assertIn("--require-hashes -r requirements-build.lock", workflow)
+        self.assertIn("persist-credentials: false", workflow)
+        self.assertIn("actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6", workflow)
+        self.assertIn("--draft", workflow)
+        self.assertIn("--draft=false", workflow)
+
+    def test_workflows_pin_actions_to_commit_shas(self) -> None:
+        for name in ("test.yml", "release.yml"):
+            workflow = (ROOT / ".github" / "workflows" / name).read_text(encoding="utf-8")
+            uses = re.findall(r"^\s*-?\s*uses:\s*([^\s#]+)", workflow, flags=re.MULTILINE)
+            self.assertTrue(uses, name)
+            for action in uses:
+                revision = action.rsplit("@", 1)[-1]
+                self.assertRegex(revision, r"^[0-9a-f]{40}$", f"{name}: {action}")
 
 
 if __name__ == "__main__":

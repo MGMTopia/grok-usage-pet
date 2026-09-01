@@ -48,12 +48,63 @@ class AuthWriteTests(unittest.TestCase):
             original = '{"account": {"key": "old"}}\n'
             path.write_text(original, encoding="utf-8")
 
-            with mock.patch.object(fu.os, "replace", side_effect=OSError("replace failed")):
+            with mock.patch.object(fu, "_replace_auth_file", side_effect=OSError("replace failed")):
                 with self.assertRaises(OSError):
                     fu._write_auth(path, {"account": {"key": "new"}})
 
             self.assertEqual(path.read_text(encoding="utf-8"), original)
             self.assertEqual(list(path.parent.glob(".auth.json.*.tmp")), [])
+
+    def test_revision_mismatch_keeps_newer_auth(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "auth.json"
+            path.write_text('{"account": {"key": "old"}}\n', encoding="utf-8")
+            revision = fu._auth_revision(path)
+            newer = '{"account": {"key": "newer"}}\n'
+            path.write_text(newer, encoding="utf-8")
+
+            with self.assertRaises(fu.AuthFileChangedError):
+                fu._write_auth(
+                    path,
+                    {"account": {"key": "stale-refresh"}},
+                    expected_revision=revision,
+                )
+
+            self.assertEqual(path.read_text(encoding="utf-8"), newer)
+            self.assertEqual(list(path.parent.glob(".auth.json.*.tmp")), [])
+
+    def test_last_moment_revision_change_cancels_replace(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "auth.json"
+            path.write_text('{"account": {"key": "old"}}\n', encoding="utf-8")
+            revision = fu._auth_revision(path)
+
+            with (
+                mock.patch.object(fu, "_auth_revision", side_effect=[revision, "changed"]),
+                mock.patch.object(fu, "_replace_auth_file") as replace,
+            ):
+                with self.assertRaises(fu.AuthFileChangedError):
+                    fu._write_auth(
+                        path,
+                        {"account": {"key": "stale-refresh"}},
+                        expected_revision=revision,
+                    )
+
+            replace.assert_not_called()
+            self.assertEqual(list(path.parent.glob(".auth.json.*.tmp")), [])
+
+    @unittest.skipUnless(os.name == "nt", "ReplaceFileW is Windows-only")
+    def test_windows_existing_auth_uses_acl_preserving_replace(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "auth.json"
+            replacement = Path(tmp) / "replacement.tmp"
+            path.write_text("{}\n", encoding="utf-8")
+            replacement.write_text("{}\n", encoding="utf-8")
+
+            with mock.patch.object(fu, "_windows_replace_file") as replace:
+                fu._replace_auth_file(replacement, path)
+
+            replace.assert_called_once_with(path, replacement)
 
 
 class GrokOidcAllowlistTests(unittest.TestCase):
@@ -105,6 +156,48 @@ class SkinPathTests(unittest.TestCase):
         self.assertFalse(skins.is_safe_skin_id("foo/bar"))
         self.assertFalse(skins.is_safe_asset_name("../secret.webp"))
         self.assertFalse(skins.is_safe_asset_name("sub/sheet.webp"))
+
+    def test_untrusted_manifest_values_are_bounded(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "skins"
+            folder = root / "hostile"
+            folder.mkdir(parents=True)
+            (folder / "spritesheet.webp").write_bytes(b"not-decoded-by-catalog")
+            (folder / "pet.json").write_text(
+                json.dumps(
+                    {
+                        "id": "hostile",
+                        "spritesheetPath": "payload.png",
+                        "atlas": {
+                            "width": 2**31,
+                            "height": 2**31,
+                            "cellWidth": -1,
+                            "cellHeight": 0,
+                            "columns": 999999,
+                            "rows": 999999,
+                        },
+                        "animations": {
+                            "idle": {"row": 999999, "frames": 999999, "ms": -1},
+                        },
+                        "look": {"rows": [-1, 999999, "bad"], "framesPerRow": 999999},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            catalog = skins.SkinCatalog(
+                root,
+                "hostile",
+                {"idle": (0, 6)},
+                {"idle": 260},
+            )
+
+            spec = catalog.load_spec("hostile")
+
+            self.assertEqual(spec["atlas"], skins.DEFAULT_ATLAS)
+            self.assertEqual(spec["spritesheetPath"], "spritesheet.webp")
+            self.assertEqual(spec["animations"]["idle"], {"row": 0, "frames": 6, "ms": 260})
+            self.assertEqual(spec["look"]["rows"], [9, 10])
+            self.assertEqual(spec["look"]["framesPerRow"], 8)
 
 
 class CursorHookTests(unittest.TestCase):

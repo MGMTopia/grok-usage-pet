@@ -51,11 +51,42 @@ if ($LASTEXITCODE -ne 0) { throw "Frozen executable visual smoke test failed" }
 if (Test-Path $out) { Remove-Item -LiteralPath $out -Recurse -Force }
 New-Item -ItemType Directory -Path (Split-Path $out) -Force | Out-Null
 Copy-Item -LiteralPath $dist -Destination $out -Recurse
-foreach ($file in @("使用说明.txt", "CHANGELOG.md", "LICENSE", "NOTICE.md", "ASSETS_NOTICE.md", "SECURITY.md")) {
+foreach ($file in @("使用说明.txt", "CHANGELOG.md", "LICENSE", "NOTICE.md", "ASSETS_NOTICE.md", "SECURITY.md", "THIRD_PARTY_NOTICES.md")) {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination (Join-Path $out $file) -Force
 }
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot "packaging\windows\start_pet.bat") -Destination (Join-Path $out "start_pet.bat") -Force
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot "packaging\windows\register_watch.ps1") -Destination (Join-Path $out "register_watch.ps1") -Force
+
+$thirdPartyDir = Join-Path $out "THIRD_PARTY_LICENSES"
+New-Item -ItemType Directory -Path $thirdPartyDir -Force | Out-Null
+$pythonRoot = (& $PythonExe -c "import sys; print(sys.base_prefix)").Trim()
+if ($LASTEXITCODE -ne 0 -or -not $pythonRoot) { throw "could not locate Python base prefix" }
+$pythonLicense = Join-Path $pythonRoot "LICENSE.txt"
+$packageLicenseCode = @'
+import importlib.metadata as metadata
+import sys
+
+dist = metadata.distribution(sys.argv[1])
+candidates = [
+    item for item in (dist.files or [])
+    if item.name.lower() in {"license", "license.txt", "copying", "copying.txt"}
+    and "licenses" in str(item).lower()
+]
+if not candidates:
+    raise SystemExit(f"license file not found for {sys.argv[1]}")
+print(dist.locate_file(candidates[0]))
+'@
+$pillowLicense = (& $PythonExe -c $packageLicenseCode "Pillow").Trim()
+if ($LASTEXITCODE -ne 0 -or -not $pillowLicense) { throw "could not locate Pillow license" }
+$pyInstallerLicense = (& $PythonExe -c $packageLicenseCode "PyInstaller").Trim()
+if ($LASTEXITCODE -ne 0 -or -not $pyInstallerLicense) { throw "could not locate PyInstaller license" }
+$tclTkLicense = Get-ChildItem -LiteralPath (Join-Path $pythonRoot "tcl") -Filter "license.terms" -Recurse -File | Select-Object -First 1
+if (-not (Test-Path $pythonLicense)) { throw "could not locate Python license" }
+if (-not $tclTkLicense) { throw "could not locate Tcl/Tk license" }
+Copy-Item -LiteralPath $pythonLicense -Destination (Join-Path $thirdPartyDir "PYTHON_LICENSE.txt") -Force
+Copy-Item -LiteralPath $pillowLicense -Destination (Join-Path $thirdPartyDir "PILLOW_LICENSE.txt") -Force
+Copy-Item -LiteralPath $pyInstallerLicense -Destination (Join-Path $thirdPartyDir "PYINSTALLER_COPYING.txt") -Force
+Copy-Item -LiteralPath $tclTkLicense.FullName -Destination (Join-Path $thirdPartyDir "TCL_TK_LICENSE.txt") -Force
 
 $skinRoot = Join-Path $out "_internal\skins"
 foreach ($need in @(

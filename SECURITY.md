@@ -23,6 +23,10 @@ The app does not require a separate account. It uses existing local sessions:
 - When a Codex access token expires, refreshes it at `https://auth.openai.com`
   and writes the updated tokens back to the existing Codex `auth.json`. API Key
   Codex mode has no remaining-percentage pool and is treated as unavailable.
+- Before replacing either auth file, verifies that another process has not
+  changed it since it was read. On Windows, replacement uses `ReplaceFileW` to
+  preserve DACLs, encryption, and named streams; on POSIX, private mode bits
+  are preserved.
 
 ## Network access
 
@@ -58,7 +62,10 @@ only entries marked `managedBy: grok-usage-pet`.
 
 Tests are offline and use temporary credentials. The release script rejects
 credential databases, quota snapshots, state files, and logs before creating
-the ZIP. Published archives include a SHA256 checksum.
+the ZIP. Published archives include a SHA256 checksum, exact third-party
+license copies, and GitHub build-provenance attestations. Skin sprite sheets
+must be bounded WebP images; untrusted manifest dimensions and animation
+values are clamped to safe limits.
 
 ## Reporting a vulnerability
 

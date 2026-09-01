@@ -6,6 +6,51 @@ import json
 from pathlib import Path
 
 
+DEFAULT_ATLAS = {
+    "width": 1536,
+    "height": 2288,
+    "cellWidth": 192,
+    "cellHeight": 208,
+    "columns": 8,
+    "rows": 11,
+}
+MAX_ATLAS_DIMENSION = 4096
+MAX_ATLAS_PIXELS = 16_777_216
+MAX_ATLAS_GRID = 64
+MAX_CELL_DIMENSION = 1024
+MAX_ANIMATION_FRAMES = 64
+MAX_LOOK_ROWS = 4
+MIN_ANIMATION_MS = 16
+MAX_ANIMATION_MS = 10_000
+
+
+def _bounded_int(value: object, fallback: int, minimum: int, maximum: int) -> int:
+    try:
+        number = int(value)
+    except (TypeError, ValueError, OverflowError):
+        return fallback
+    return number if minimum <= number <= maximum else fallback
+
+
+def _safe_atlas(value: object) -> dict[str, int]:
+    raw = value if isinstance(value, dict) else {}
+    atlas = {
+        "width": _bounded_int(raw.get("width"), DEFAULT_ATLAS["width"], 1, MAX_ATLAS_DIMENSION),
+        "height": _bounded_int(raw.get("height"), DEFAULT_ATLAS["height"], 1, MAX_ATLAS_DIMENSION),
+        "cellWidth": _bounded_int(raw.get("cellWidth"), DEFAULT_ATLAS["cellWidth"], 1, MAX_CELL_DIMENSION),
+        "cellHeight": _bounded_int(raw.get("cellHeight"), DEFAULT_ATLAS["cellHeight"], 1, MAX_CELL_DIMENSION),
+        "columns": _bounded_int(raw.get("columns"), DEFAULT_ATLAS["columns"], 1, MAX_ATLAS_GRID),
+        "rows": _bounded_int(raw.get("rows"), DEFAULT_ATLAS["rows"], 1, MAX_ATLAS_GRID),
+    }
+    if (
+        atlas["width"] * atlas["height"] > MAX_ATLAS_PIXELS
+        or atlas["columns"] * atlas["cellWidth"] != atlas["width"]
+        or atlas["rows"] * atlas["cellHeight"] != atlas["height"]
+    ):
+        return dict(DEFAULT_ATLAS)
+    return atlas
+
+
 def is_safe_skin_id(skin_id: str) -> bool:
     if not skin_id or skin_id in {".", ".."}:
         return False
@@ -68,23 +113,52 @@ class SkinCatalog:
         spec.setdefault("spritesheetPath", "spritesheet.webp")
         spec.setdefault("icon", "app.ico")
         spec.setdefault("iconPng", "app.png")
-        spec.setdefault(
-            "atlas",
-            {
-                "width": 1536,
-                "height": 2288,
-                "cellWidth": 192,
-                "cellHeight": 208,
-                "columns": 8,
-                "rows": 11,
-            },
-        )
-        if "animations" not in spec:
-            spec["animations"] = {
-                name: {"row": row, "frames": count, "ms": self.default_animation_ms.get(name, 200)}
-                for name, (row, count) in self.default_animations.items()
+        atlas = _safe_atlas(spec.get("atlas"))
+        spec["atlas"] = atlas
+        raw_animations = spec.get("animations") if isinstance(spec.get("animations"), dict) else {}
+        animations: dict[str, dict[str, int]] = {}
+        for name, (default_row, default_count) in self.default_animations.items():
+            raw = raw_animations.get(name)
+            cfg = raw if isinstance(raw, dict) else {}
+            animations[name] = {
+                "row": _bounded_int(cfg.get("row"), default_row, 0, atlas["rows"] - 1),
+                "frames": _bounded_int(
+                    cfg.get("frames"),
+                    default_count,
+                    1,
+                    min(atlas["columns"], MAX_ANIMATION_FRAMES),
+                ),
+                "ms": _bounded_int(
+                    cfg.get("ms"),
+                    self.default_animation_ms.get(name, 200),
+                    MIN_ANIMATION_MS,
+                    MAX_ANIMATION_MS,
+                ),
             }
-        spec.setdefault("look", {"rows": [9, 10], "framesPerRow": 8, "origin": "up", "order": "clockwise"})
+        spec["animations"] = animations
+        raw_look = spec.get("look") if isinstance(spec.get("look"), dict) else {}
+        raw_rows = raw_look.get("rows") if isinstance(raw_look.get("rows"), list) else [9, 10]
+        look_rows: list[int] = []
+        for raw_row in raw_rows[:MAX_LOOK_ROWS]:
+            try:
+                row = int(raw_row)
+            except (TypeError, ValueError, OverflowError):
+                continue
+            if 0 <= row < atlas["rows"] and row not in look_rows:
+                look_rows.append(row)
+        if not look_rows:
+            look_rows = [row for row in (9, 10) if row < atlas["rows"]] or [atlas["rows"] - 1]
+        spec["look"] = {
+            "rows": look_rows,
+            "framesPerRow": _bounded_int(
+                raw_look.get("framesPerRow"),
+                min(8, atlas["columns"]),
+                1,
+                atlas["columns"],
+            ),
+            "origin": raw_look.get("origin") if raw_look.get("origin") in {"up"} else "up",
+            "order": raw_look.get("order") if raw_look.get("order") in {"clockwise"} else "clockwise",
+        }
         if not is_safe_skin_id(str(spec.get("id") or "")):
             spec["id"] = skin_id if is_safe_skin_id(skin_id) else self.default_skin_id
         for key, fallback in (
@@ -94,6 +168,8 @@ class SkinCatalog:
         ):
             if not is_safe_asset_name(str(spec.get(key) or "")):
                 spec[key] = fallback
+        if Path(str(spec["spritesheetPath"])).suffix.lower() != ".webp":
+            spec["spritesheetPath"] = "spritesheet.webp"
         return spec
 
     def atlas_path(self, skin_id: str) -> Path | None:

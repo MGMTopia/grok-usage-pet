@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+## 0.3.4 — 2026-09-01
+
+Security and release-integrity patch. Git tag: `v0.3.4`.
+
+- Upgrade Pillow from 11.0.0 to 12.3.0 to resolve current image-processing advisories.
+- Accept only bounded WebP sprite atlases and sanitize untrusted skin dimensions, rows, frame counts, and timing.
+- Abort OAuth credential writes when another process updates the auth file during refresh.
+- Preserve Windows credential-file ACLs, encryption, and named streams with `ReplaceFileW`.
+- Add a hash-locked Windows release dependency set and monthly Dependabot checks.
+- Package exact Python, Tcl/Tk, Pillow, native image-library, and PyInstaller license terms.
+- Pin GitHub Actions to immutable commit SHAs and separate read-only build permissions from release permissions.
+- Generate GitHub build-provenance attestations and publish releases through a recoverable draft step.
+- Remove workstation-specific Git metadata instructions from the public README.
+
 ## 0.3.3 — 2026-08-31
 
 Quota, animation, launcher, and hardening release. Git tag: `v0.3.3`.

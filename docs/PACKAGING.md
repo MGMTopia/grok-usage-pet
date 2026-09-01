@@ -1,12 +1,12 @@
 # Packaging and releases
 
-The verified Windows toolchain is Python 3.12, Pillow 11.0.0, PyInstaller
+The verified Windows toolchain is Python 3.12, Pillow 12.3.0, PyInstaller
 6.22.2, and pyinstaller-hooks-contrib 2026.7.
 
 ## Build locally
 
 ```powershell
-python -m pip install -r requirements-build.txt
+python -m pip install --require-hashes -r requirements-build.lock
 powershell -NoProfile -ExecutionPolicy Bypass -File .\pack-windows.ps1
 ```
 
@@ -18,7 +18,8 @@ The current script:
 4. builds the PyInstaller spec;
 5. runs frozen non-GUI and three-second Tk visual smoke tests;
 6. verifies required themes and rejects user-data files;
-7. creates a Windows x64 ZIP and matching SHA256 file.
+7. copies exact dependency license files from the build environment;
+8. creates a Windows x64 ZIP and matching SHA256 file.
 
 `pack-kawaii.ps1` remains only as a temporary compatibility wrapper. Public
 artifacts, executable names, scheduled tasks, and data paths use
@@ -35,4 +36,6 @@ GrokUsagePet-v<version>-Windows-x64.zip.sha256
 
 Do not publish `auth.json`, `state.vscdb`, quota snapshots, state files, logs,
 or a locally populated data directory. The CI release workflow is the preferred
-source of public binaries.
+source of public binaries. It builds with read-only repository permissions,
+attests the ZIP with GitHub's Sigstore-backed provenance service, creates a
+draft release, uploads both assets, and only then publishes the release.

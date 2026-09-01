@@ -1,10 +1,8 @@
 # Grok 额度宠物
 
-Current release: **0.3.3** (`v0.3.3`).
+Current release: **0.3.4** (`v0.3.4`).
 
 Unofficial desktop pet for SuperGrok weekly, Grok Bot weekly, Cursor monthly pools, and locally signed-in Codex quota windows. Not an xAI, Cursor, or OpenAI product. Program code is MIT licensed; character assets have separate terms in [ASSETS_NOTICE.md](ASSETS_NOTICE.md).
-
-Git metadata for this mixed working directory is maintained outside `D:\ai`; do not initialize another repository inside it.
 
 End-user instructions: [使用说明.txt](使用说明.txt)
 
@@ -28,14 +26,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\run-tests.ps1
 
 ## Build the Windows release
 
-The verified toolchain is Python 3.12, Pillow 11.0.0, PyInstaller 6.22.2, and pyinstaller-hooks-contrib 2026.7.
+The verified toolchain is Python 3.12, Pillow 12.3.0, PyInstaller 6.22.2, and pyinstaller-hooks-contrib 2026.7.
 
 ```powershell
-python -m pip install -r requirements-build.txt
+python -m pip install --require-hashes -r requirements-build.lock
 powershell -NoProfile -ExecutionPolicy Bypass -File .\pack-windows.ps1
 ```
 
-`GrokUsagePet.spec` is the single source of truth for PyInstaller resources. The packaging script runs tests, builds the executable, runs smoke tests, checks required skins and sensitive content, and creates a versioned ZIP with SHA256 verification.
+`GrokUsagePet.spec` is the single source of truth for PyInstaller resources. The packaging script runs tests, builds the executable, runs smoke tests, checks required skins and sensitive content, includes exact third-party license files, and creates a versioned ZIP with SHA256 verification. GitHub release builds also publish a verifiable provenance attestation.
 
 For a deterministic GUI lifecycle check without credentials or network access:
 
@@ -49,7 +47,7 @@ The preview renders fixed sample quotas and exits after three seconds without sa
 
 | Zip | What |
 |-----|------|
-| `GrokUsagePet-v0.3.3-Windows-x64.zip` | Current release (`GrokUsagePet.exe`). Rebuild with `pack-windows.ps1`. |
+| `GrokUsagePet-v0.3.4-Windows-x64.zip` | Current release (`GrokUsagePet.exe`). Rebuild with `pack-windows.ps1`. |
 | `GrokUsagePet-kawaii.zip` | Legacy v0.2.0 compatibility archive; not the current release. |
 
 Do not copy `auth.json`, Cursor `state.vscdb`, or `pet_state.json` into a zip.
@@ -75,7 +73,7 @@ Do not copy `auth.json`, Cursor `state.vscdb`, or `pet_state.json` into a zip.
 - `skins/original/` — complete default Original/Pip skin
 - `packaging/windows/` — portable launcher and watcher registration files
 
-Version changes are recorded in [CHANGELOG.md](CHANGELOG.md). Code licensing is in [LICENSE](LICENSE); artwork redistribution boundaries are documented separately.
+Version changes are recorded in [CHANGELOG.md](CHANGELOG.md). Code licensing is in [LICENSE](LICENSE), packaged dependency terms are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), and artwork redistribution boundaries are documented separately.
 
 ## Feedback and contributions
 
