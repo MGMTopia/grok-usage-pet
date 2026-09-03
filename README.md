@@ -1,18 +1,34 @@
-# Grok 额度宠物
+# Grok 额度桌宠
+
+**Grok usage desktop pet** for Windows.
+
+<p align="center">
+  <img src="docs/preview.gif" alt="Grok 额度桌宠 / Grok usage desktop pet showing SuperGrok, Grok Bot, Cursor, and Codex remaining quota" />
+</p>
+
+Unofficial overlay for SuperGrok weekly, Grok Bot weekly, Cursor monthly, and Codex quota. Not an xAI, Cursor, or OpenAI product. Program code is MIT licensed; character assets have separate terms in [ASSETS_NOTICE.md](ASSETS_NOTICE.md).
+
+## Install
 
 Current release: **0.3.8** (`v0.3.8`).
 
-Unofficial desktop pet for SuperGrok weekly, Grok Bot weekly, Cursor monthly pools, and locally signed-in Codex quota windows. Not an xAI, Cursor, or OpenAI product. Program code is MIT licensed; character assets have separate terms in [ASSETS_NOTICE.md](ASSETS_NOTICE.md).
+Download **`GrokUsagePet-v0.3.8-Windows-x64.zip`** from the
+[latest GitHub Release](https://github.com/MGMTopia/grok-usage-pet/releases/latest).
+Python is not required.
 
-End-user instructions: [使用说明.txt](使用说明.txt)
+1. Unzip the **whole folder**. Do not copy only the exe.
+2. Sign in to at least one source (`grok login`, Cursor, or ChatGPT-plan `codex login`).
+3. Double-click `GrokUsagePet.exe`.
+
+Windows 10/11. The build is unsigned, so SmartScreen may ask you to run it anyway. End-user steps: [使用说明.txt](使用说明.txt)
+
+Data is stored in `%LOCALAPPDATA%\GrokUsagePet`. Settings → 卸载, or `--uninstall`, removes local integration residue without touching Grok, Cursor, or Codex logins.
 
 ## Run from source
 
 ```text
 pythonw pet.py
 ```
-
-Data is stored in `%LOCALAPPDATA%\GrokUsagePet`. A first run can copy missing state from the legacy `%LOCALAPPDATA%\GrokUsagePetKawaii` directory without deleting it. Settings → 卸载, or `--uninstall`, stops pet/watcher instances and removes local integration residue without touching Grok, Cursor, or Codex logins. A verified portable release folder deletes itself after exit; source clones remain under the user's control.
 
 Fetching does not require Grok Build, Cursor, or Codex to be running. SuperGrok and ChatGPT-login Codex sessions can refresh their local OAuth credentials when needed; API-key Codex mode has no subscription quota percentage.
 
@@ -26,7 +42,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\run-tests.ps1
 
 ## Build the Windows release
 
-The verified toolchain is Python 3.12, Pillow 12.3.0, PyInstaller 6.22.2, and pyinstaller-hooks-contrib 2026.7.
+The verified toolchain is Python 3.12, Pillow 12.3.0, PyInstaller 6.22.2, and pyinstaller-hooks-contrib 2026.7. Most people should use the Release zip above instead of compiling.
 
 ```powershell
 python -m pip install --require-hashes -r requirements-build.lock
@@ -73,6 +89,7 @@ Do not copy `auth.json`, Cursor `state.vscdb`, or `pet_state.json` into a zip.
 - `skins/megumi-kato/` — complete example skin
 - `skins/original/` — complete default Original/Pip skin
 - `packaging/windows/` — portable launcher and watcher registration files
+- `docs/preview.gif` — README animation, regenerated with `docs/make_preview_gif.py`
 
 Version changes are recorded in [CHANGELOG.md](CHANGELOG.md). Code licensing is in [LICENSE](LICENSE), packaged dependency terms are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), and artwork redistribution boundaries are documented separately.
 
