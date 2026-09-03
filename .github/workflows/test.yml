@@ -37,4 +37,4 @@ jobs:
           python -m compileall -q
           pet.py fetch_usage.py watch_apps.py start_pet.py
           app_version.py usage_model.py snapshot_store.py cursor_hooks.py
-          skin_catalog.py pet_view_model.py
+          skin_catalog.py pet_view_model.py app_update.py

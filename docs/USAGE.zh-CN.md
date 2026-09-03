@@ -6,7 +6,7 @@ Grok Bot、Cursor 和 Codex 的额度与重置时间。它不是 xAI、Cursor �
 
 ## 安装
 
-1. 从 GitHub Releases 下载 Windows x64 ZIP。
+1. 从 GitHub Releases 下载当前 Windows x64 ZIP（`GrokUsagePet-v0.3.9-Windows-x64.zip`）。
 2. 解压整个文件夹，不要只复制 EXE。
 3. 至少登录一个数据来源：
    - SuperGrok：通过 Grok CLI 完成登录；

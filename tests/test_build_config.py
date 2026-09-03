@@ -69,6 +69,8 @@ class BuildConfigTests(unittest.TestCase):
         self.assertIn("启动后检查 GitHub 新版本", usage)
         self.assertNotIn("没有遥测、广告或自动更新", usage)
         self.assertIn("app_update", (ROOT / "GrokUsagePet.spec").read_text(encoding="utf-8"))
+        workflow_test = (ROOT / ".github" / "workflows" / "test.yml").read_text(encoding="utf-8")
+        self.assertIn("app_update.py", workflow_test)
 
     def test_code_and_asset_licenses_are_separate(self) -> None:
         license_text = (ROOT / "LICENSE").read_text(encoding="utf-8")
