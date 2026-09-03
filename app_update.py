@@ -22,7 +22,7 @@ from pathlib import Path, PurePosixPath
 
 from app_version import APP_VERSION, INSTALL_MARKER_NAME, INSTALL_MARKER_VALUE
 
-GITHUB_OWNER = "liruilong0805"
+GITHUB_OWNER = "MGMTopia"
 GITHUB_REPO = "grok-usage-pet"
 LATEST_URL = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}/releases/latest"
 HTML_RELEASE_PREFIX = f"https://github.com/{GITHUB_OWNER}/{GITHUB_REPO}/releases/"

@@ -78,8 +78,6 @@ Version changes are recorded in [CHANGELOG.md](CHANGELOG.md). Code licensing is 
 
 ## Feedback and contributions
 
-- [Report a bug or request a feature](https://github.com/liruilong0805/grok-usage-pet/issues/new/choose)
-- [Ask questions, suggest themes, or vote on ideas](https://github.com/liruilong0805/grok-usage-pet/discussions)
-- [Report a security vulnerability privately](https://github.com/liruilong0805/grok-usage-pet/security/advisories/new)
+Use this GitHub repository's **Issues**, **Discussions**, and **Security advisories** tabs. Do not paste tokens or quota snapshots.
 
 Before posting, remove email addresses, tokens, `auth.json`, `state.vscdb`, quota snapshots, and full logs. See [CONTRIBUTING.md](CONTRIBUTING.md) for the project scope and test requirements.
