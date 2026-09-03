@@ -90,6 +90,49 @@ class AnimationTimingTests(unittest.TestCase):
         instance._look_target = 0
         self.assertEqual(instance._look_index(), 0)
 
+    def test_pointer_look_beats_ambient_login_and_bubble_states(self) -> None:
+        instance = pet.UsagePet.__new__(pet.UsagePet)
+        instance._drag = None
+        instance._oneshot = None
+        instance._anims = {
+            "idle": [object()],
+            "waiting": [object()],
+            "running": [object()],
+            "review": [object()],
+        }
+        instance._look_target = None
+        instance._look_index = lambda: 6
+        instance.bars_visible = lambda: True
+
+        for snap, busy in ((None, False), ({"status": "complete"}, True), ({}, False)):
+            with self.subTest(snap=snap, busy=busy):
+                instance.snap = snap
+                instance._busy = busy
+                self.assertEqual(instance._current_anim(), "look")
+                self.assertEqual(instance._look_target, 6)
+
+    def test_drag_and_oneshot_still_beat_pointer_look(self) -> None:
+        instance = pet.UsagePet.__new__(pet.UsagePet)
+        instance._anims = {
+            "idle": [object()],
+            "running-right": [object()],
+            "waving": [object()],
+        }
+        instance._look_target = None
+        instance._look_index = lambda: 4
+        instance.snap = {}
+        instance._busy = False
+        instance.bars_visible = lambda: False
+
+        instance._drag = (0, 0, 0, 0)
+        instance._drag_dx = 1
+        instance._oneshot = None
+        self.assertEqual(instance._current_anim(), "running-right")
+
+        instance._drag = None
+        instance._oneshot = "waving"
+        self.assertEqual(instance._current_anim(), "waving")
+
     def test_quota_fetch_oneshot_uses_low_and_healthy_thresholds(self) -> None:
         self.assertEqual(pet.quota_fetch_oneshot([19.9]), "failed")
         self.assertEqual(pet.quota_fetch_oneshot([5.0, 88.0]), "failed")
@@ -112,6 +155,8 @@ class AnimationTimingTests(unittest.TestCase):
     def test_waving_oneshot_beats_loading_wait(self) -> None:
         instance = pet.UsagePet.__new__(pet.UsagePet)
         instance._drag = None
+        instance._looks = []
+        instance._look_target = None
         instance.snap = None
         instance._oneshot = "waving"
         instance._anims = {"waving": [object()], "waiting": [object()], "idle": [object()]}
