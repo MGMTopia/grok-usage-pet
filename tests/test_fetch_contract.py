@@ -130,6 +130,56 @@ class SnapshotContractTests(unittest.TestCase):
         self.assertEqual(rendered, "updated local usage snapshot")
         self.assertNotIn("private", rendered)
 
+    def test_diagnostics_redact_credentials_queries_and_newlines(self) -> None:
+        github_token = "ghp_" + ("a" * 26)
+        diagnostic = (
+            "Authorization: Bearer abcdefghijklmnopqrstuvwxyz "
+            "refresh_token=refresh-secret-value "
+            "https://service.example/path?token=query-secret\n"
+            + github_token
+        )
+        rendered = fu.redact_sensitive_text(diagnostic)
+        self.assertNotIn(github_token, rendered)
+        self.assertNotIn("refresh-secret-value", rendered)
+        self.assertNotIn("query-secret", rendered)
+        self.assertNotIn("\n", rendered)
+        self.assertIn("[redacted]", rendered)
+
+    def test_service_text_is_bounded_and_redacts_email(self) -> None:
+        rendered = fu.bounded_service_text("contact person@example.com " + ("x" * 500), limit=80)
+        self.assertIsNotNone(rendered)
+        self.assertNotIn("person@example.com", rendered)
+        self.assertLessEqual(len(rendered), 80)
+        self.assertIsNone(fu.bounded_service_text({"unexpected": "shape"}))
+
+    def test_provider_failures_do_not_copy_tokens_into_snapshot(self) -> None:
+        canary = "opaque-provider-token-canary"
+        with (
+            mock.patch.object(fu, "load_token", return_value=(canary, {})),
+            mock.patch.object(fu, "get_json", side_effect=TimeoutError("offline")),
+            mock.patch.object(fu, "fetch_cursor", return_value=None),
+            mock.patch.object(fu, "fetch_codex", return_value=None),
+        ):
+            snap = fu.snapshot()
+        self.assertNotIn(canary, json.dumps(snap, ensure_ascii=False))
+
+    def test_provider_exception_text_redacts_bearer_token_canary(self) -> None:
+        canary = "provider-secret-" + ("z" * 24)
+        with (
+            mock.patch.object(fu, "load_token", return_value=(canary, {})),
+            mock.patch.object(
+                fu,
+                "get_json",
+                side_effect=RuntimeError(f"Authorization: Bearer {canary}"),
+            ),
+            mock.patch.object(fu, "fetch_cursor", return_value=None),
+            mock.patch.object(fu, "fetch_codex", return_value=None),
+        ):
+            snap = fu.snapshot()
+
+        self.assertNotIn(canary, json.dumps(snap, ensure_ascii=False))
+        self.assertIn("[redacted]", snap["errors"]["grok"])
+
     def test_failed_summary_omits_private_provider_errors(self) -> None:
         snap = {
             "status": fu.STATUS_FAILED,

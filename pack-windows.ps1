@@ -7,12 +7,23 @@ $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
 $version = (Get-Content (Join-Path $PSScriptRoot "VERSION") -Raw).Trim()
+if ($version -notmatch '^\d+\.\d+\.\d+$') {
+    throw "VERSION must be a numeric semantic version (for example 0.3.8)"
+}
 $name = "GrokUsagePet"
 $artifactName = "$name-v$version-Windows-x64"
 $dist = Join-Path $PSScriptRoot "dist\$name"
 $out = Join-Path $PSScriptRoot "release\$artifactName"
 $zip = Join-Path $PSScriptRoot "release\$artifactName.zip"
 $checksum = "$zip.sha256"
+
+# Remove only this version's stale outputs before the test phase. Release smoke
+# tests must never inspect an archive left by an older packaging implementation.
+foreach ($staleOutput in @($out, $zip, $checksum)) {
+    if (Test-Path -LiteralPath $staleOutput) {
+        Remove-Item -LiteralPath $staleOutput -Recurse -Force
+    }
+}
 
 if (-not $PythonExe) {
     $venvPython = Join-Path $PSScriptRoot ".venv\Scripts\python.exe"
@@ -82,6 +93,7 @@ foreach ($file in @("使用说明.txt", "CHANGELOG.md", "LICENSE", "NOTICE.md", 
 }
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot "packaging\windows\start_pet.bat") -Destination (Join-Path $out "start_pet.bat") -Force
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot "packaging\windows\register_watch.ps1") -Destination (Join-Path $out "register_watch.ps1") -Force
+Set-Content -LiteralPath (Join-Path $out ".grok-usage-pet-install") -Value "grok-usage-pet-portable-v1" -Encoding ascii -NoNewline
 
 $thirdPartyDir = Join-Path $out "THIRD_PARTY_LICENSES"
 New-Item -ItemType Directory -Path $thirdPartyDir -Force | Out-Null

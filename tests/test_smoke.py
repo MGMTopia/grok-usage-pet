@@ -181,7 +181,11 @@ class ReleaseSafetySmokeTests(unittest.TestCase):
         }
         with zipfile.ZipFile(archive) as package:
             packaged_names = {Path(name.replace("\\", "/")).name.lower() for name in package.namelist()}
+            marker_names = [name for name in package.namelist() if Path(name).name == pet.INSTALL_MARKER_NAME]
+            self.assertEqual(len(marker_names), 1)
+            marker_value = package.read(marker_names[0]).decode("ascii").strip()
         self.assertEqual(packaged_names & forbidden, set())
+        self.assertEqual(marker_value, pet.INSTALL_MARKER_VALUE)
 
 
 if __name__ == "__main__":

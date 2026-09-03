@@ -7,10 +7,13 @@ import json
 import math
 import os
 import queue
+import re
 import shlex
 import shutil
+import stat
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import tkinter as tk
@@ -28,7 +31,8 @@ import fetch_usage as fu
 import cursor_hooks
 import skin_catalog
 import app_update
-from app_version import APP_VERSION
+from app_version import APP_VERSION, INSTALL_MARKER_NAME, INSTALL_MARKER_VALUE
+from snapshot_store import write_text_atomic
 from pet_view_model import (
     POOL_META,
     build_pools,
@@ -50,6 +54,7 @@ ASSETS = LEGACY_ASSETS
 HOOK_FILE = fu.grok_home() / "hooks" / "usage-pet.json"
 CURSOR_HOOK_FILE = Path.home() / ".cursor" / "hooks.json"
 CURSOR_HOOK_MARKER = cursor_hooks.MARKER
+GROK_HOOK_MARKER = "grok-usage-pet"
 BG = "#1b1b1f"
 CHROMA = "#ff00ff"
 CHROMA_RGB = (255, 0, 255)
@@ -529,7 +534,7 @@ def load_state() -> dict:
     if STATE_FILE.exists():
         try:
             loaded = json.loads(STATE_FILE.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
+        except (OSError, json.JSONDecodeError):
             loaded = {}
         if isinstance(loaded, dict):
             raw = loaded
@@ -543,7 +548,7 @@ def save_state(data: dict) -> None:
     current.update(data)
     for key in _SESSION_LAYOUT_KEYS:
         current.pop(key, None)
-    STATE_FILE.write_text(json.dumps(current, ensure_ascii=False, indent=2), encoding="utf-8")
+    write_text_atomic(STATE_FILE, json.dumps(current, ensure_ascii=False, indent=2) + "\n")
 
 
 def load_enabled() -> dict[str, bool]:
@@ -735,7 +740,21 @@ def launcher_bat() -> Path | None:
 def install_hook() -> Path:
     HOOK_FILE.parent.mkdir(parents=True, exist_ok=True)
     command = str(launcher_bat().resolve()) if launcher_bat() else hook_command()
-    payload = {
+    payload = _grok_hook_payload(command)
+    if HOOK_FILE.exists():
+        try:
+            existing = json.loads(HOOK_FILE.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise RuntimeError("Grok hook 配置无法读取，未作修改") from exc
+        if not _is_our_grok_hook_payload(existing, command):
+            raise RuntimeError("Grok hook 路径已被其他配置使用，未作修改")
+    write_text_atomic(HOOK_FILE, json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
+    return HOOK_FILE
+
+
+def _grok_hook_payload(command: str) -> dict:
+    return {
+        "managedBy": GROK_HOOK_MARKER,
         "hooks": {
             "SessionStart": [
                 {
@@ -750,13 +769,31 @@ def install_hook() -> Path:
             ]
         }
     }
-    HOOK_FILE.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    return HOOK_FILE
+
+
+def _is_our_grok_hook_payload(payload: object, command: str | None = None) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    if command is None:
+        command = str(launcher_bat().resolve()) if launcher_bat() else hook_command()
+    expected = _grok_hook_payload(command)
+    if payload == expected:
+        return True
+    legacy = dict(expected)
+    legacy.pop("managedBy", None)
+    return payload == legacy
 
 
 def uninstall_hook() -> None:
-    if HOOK_FILE.exists():
-        HOOK_FILE.unlink()
+    if not HOOK_FILE.exists():
+        return
+    try:
+        payload = json.loads(HOOK_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError("Grok hook 配置无法读取，未作修改") from exc
+    if not _is_our_grok_hook_payload(payload):
+        raise RuntimeError("Grok hook 不属于本程序，未作修改")
+    HOOK_FILE.unlink()
 
 
 def cursor_hook_command() -> str:
@@ -801,7 +838,12 @@ def sync_watcher() -> None:
 
 
 def grok_autostart_on() -> bool:
-    return HOOK_FILE.exists()
+    if not HOOK_FILE.exists():
+        return False
+    try:
+        return _is_our_grok_hook_payload(json.loads(HOOK_FILE.read_text(encoding="utf-8")))
+    except (OSError, json.JSONDecodeError):
+        return False
 
 
 def cursor_autostart_on() -> bool:
@@ -838,53 +880,116 @@ def app_data_directories() -> list[Path]:
     return dirs
 
 
+_REMOVE_OWNED_TASKS_PS = r"""
+$ErrorActionPreference = 'Stop'
+$installRoot = [IO.Path]::GetFullPath($env:GROK_USAGE_PET_INSTALL_ROOT).TrimEnd('\')
+$taskNames = $env:GROK_USAGE_PET_TASK_NAMES -split '\|'
+$productNames = @('GrokUsagePet.exe', 'GrokUsagePetKawaii.exe')
+$pythonNames = @('python.exe', 'pythonw.exe')
+$sourceScripts = @(
+    (Join-Path $installRoot 'pet.py'),
+    (Join-Path $installRoot 'watch_apps.py')
+)
+
+foreach ($name in $taskNames) {
+    try {
+        $task = Get-ScheduledTask -TaskPath '\' -TaskName $name -ErrorAction SilentlyContinue
+        if (-not $task) { continue }
+        $owned = $true
+        $seenAction = $false
+        foreach ($action in $task.Actions) {
+            $seenAction = $true
+            $actionOwned = $false
+            $raw = [Environment]::ExpandEnvironmentVariables([string]$action.Execute).Trim('"')
+            $rawArgs = [Environment]::ExpandEnvironmentVariables([string]$action.Arguments).Trim()
+            if (-not [IO.Path]::IsPathRooted($raw)) {
+                $owned = $false
+                break
+            }
+            $candidate = [IO.Path]::GetFullPath($raw)
+            if (($productNames -icontains [IO.Path]::GetFileName($candidate)) -and
+                ([IO.Path]::GetDirectoryName($candidate) -ieq $installRoot)) {
+                $actionOwned = $true
+            }
+            if ((-not $actionOwned) -and ($pythonNames -icontains [IO.Path]::GetFileName($candidate))) {
+                foreach ($sourceScript in $sourceScripts) {
+                    if (($rawArgs -ieq $sourceScript) -or ($rawArgs -ieq ('"' + $sourceScript + '"'))) {
+                        $actionOwned = $true
+                        break
+                    }
+                }
+            }
+            if (-not $actionOwned) {
+                $owned = $false
+                break
+            }
+        }
+        if (-not $seenAction) { $owned = $false }
+        if (-not $owned) { continue }
+        if ($name -like '*Watch') {
+            Stop-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
+        }
+        Unregister-ScheduledTask -TaskPath '\' -TaskName $name -Confirm:$false -ErrorAction Stop
+        Write-Output $name
+    } catch {
+        Write-Output ('ERROR::' + $name + '::' + $_.Exception.Message)
+    }
+}
+"""
+
+
 def remove_scheduled_tasks() -> tuple[list[str], list[str]]:
     removed: list[str] = []
     errors: list[str] = []
     if os.name != "nt":
         return removed, errors
-    flags = CREATE_NO_WINDOW
-    for name in APP_TASK_NAMES:
-        # Deleting a task does not stop an already-running task instance.
-        # Never end the Launch task here: the current GUI may itself be that
-        # instance. The scoped process sweep below stops other GUI instances.
-        if name in WATCH_TASK_NAMES:
-            try:
-                subprocess.run(
-                    ["schtasks", "/End", "/TN", name],
-                    capture_output=True,
-                    creationflags=flags,
-                    timeout=15,
-                )
-            except (OSError, subprocess.TimeoutExpired) as exc:
-                errors.append(f"end {name}: {exc}")
-        try:
-            ran = subprocess.run(
-                ["schtasks", "/Delete", "/TN", name, "/F"],
-                capture_output=True,
-                creationflags=flags,
-                timeout=15,
-            )
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            errors.append(f"delete {name}: {exc}")
-            continue
-        if ran.returncode == 0:
-            removed.append(name)
+    env = os.environ.copy()
+    env["GROK_USAGE_PET_INSTALL_ROOT"] = str(fu.install_dir().resolve())
+    env["GROK_USAGE_PET_TASK_NAMES"] = "|".join(APP_TASK_NAMES)
+    try:
+        ran = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", _REMOVE_OWNED_TASKS_PS],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="ignore",
+            creationflags=CREATE_NO_WINDOW,
+            timeout=30,
+            env=env,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return removed, [f"task cleanup: {fu.redact_sensitive_text(exc)}"]
+    if ran.returncode != 0:
+        errors.append(f"task cleanup: {fu.redact_sensitive_text(ran.stderr or ran.returncode)}")
+    for line in ran.stdout.splitlines():
+        if line.startswith("ERROR::"):
+            errors.append(fu.redact_sensitive_text(line.removeprefix("ERROR::")))
+        elif line in APP_TASK_NAMES:
+            removed.append(line)
     return removed, errors
 
 
 _STOP_APP_PROCESSES_PS = r"""
 $ErrorActionPreference = 'Stop'
 $currentPid = [int]$env:GROK_USAGE_PET_CURRENT_PID
-$sourceRoot = [IO.Path]::GetFullPath($env:GROK_USAGE_PET_SOURCE_ROOT).TrimEnd('\')
-$sourcePattern = [regex]::Escape($sourceRoot + '\')
+$installRoot = [IO.Path]::GetFullPath($env:GROK_USAGE_PET_INSTALL_ROOT).TrimEnd('\')
+$sourcePattern = [regex]::Escape($installRoot + '\')
 $productNames = @('GrokUsagePet.exe', 'GrokUsagePetKawaii.exe')
 $pythonNames = @('python.exe', 'pythonw.exe')
 
 Get-CimInstance Win32_Process | Where-Object {
     if ($_.ProcessId -eq $currentPid) { return $false }
     $name = [string]$_.Name
-    if ($productNames -icontains $name) { return $true }
+    if ($productNames -icontains $name) {
+        $rawPath = [string]$_.ExecutablePath
+        if (-not $rawPath) { return $false }
+        try {
+            $candidate = [IO.Path]::GetFullPath([Environment]::ExpandEnvironmentVariables($rawPath).Trim('"'))
+            return [IO.Path]::GetDirectoryName($candidate) -ieq $installRoot
+        } catch {
+            return $false
+        }
+    }
     if ($pythonNames -inotcontains $name) { return $false }
     $command = [string]$_.CommandLine
     return $command -match ('(?i)"?' + $sourcePattern + '(?:pet|watch_apps)\.py"?(?:\s|$)')
@@ -913,7 +1018,7 @@ def stop_app_processes() -> list[str]:
         return []
     env = os.environ.copy()
     env["GROK_USAGE_PET_CURRENT_PID"] = str(os.getpid())
-    env["GROK_USAGE_PET_SOURCE_ROOT"] = str(fu.resource_dir().resolve())
+    env["GROK_USAGE_PET_INSTALL_ROOT"] = str(fu.install_dir().resolve())
     ran = subprocess.run(
         ["powershell", "-NoProfile", "-Command", _STOP_APP_PROCESSES_PS],
         capture_output=True,
@@ -991,13 +1096,137 @@ def purge_local_residue() -> dict[str, list[str]]:
     }
 
 
-def format_purge_report(result: dict[str, list[str]]) -> str:
+def _is_reparse_point(path: Path) -> bool:
+    try:
+        attrs = getattr(path.stat(follow_symlinks=False), "st_file_attributes", 0)
+    except OSError:
+        return True
+    return bool(attrs & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400))
+
+
+def validated_self_delete_dir(
+    install_dir: Path | None = None,
+    executable: Path | None = None,
+    *,
+    frozen: bool | None = None,
+) -> Path | None:
+    """Return a narrowly validated portable install tree, never a broad folder."""
+    if os.name != "nt":
+        return None
+    if frozen is None:
+        frozen = bool(getattr(sys, "frozen", False))
+    if not frozen:
+        return None
+    try:
+        destination = Path(install_dir or fu.install_dir()).resolve()
+        exe = Path(executable or sys.executable).resolve()
+        home = Path.home().resolve()
+    except OSError:
+        return None
+    if destination.parent == destination or destination == home or exe.parent != destination:
+        return None
+    if exe.name.casefold() != "grokusagepet.exe":
+        return None
+    if not re.fullmatch(r"GrokUsagePet-v\d+\.\d+\.\d+-Windows-x64", destination.name):
+        return None
+    marker = destination / INSTALL_MARKER_NAME
+    runtime = destination / "_internal"
+    try:
+        marker_value = marker.read_text(encoding="ascii").strip()
+    except OSError:
+        return None
+    if marker_value != INSTALL_MARKER_VALUE or not runtime.is_dir():
+        return None
+    for path in (destination, exe, marker, runtime):
+        if path.is_symlink() or _is_reparse_point(path):
+            return None
+    try:
+        for path in destination.rglob("*"):
+            if path.is_symlink() or _is_reparse_point(path):
+                return None
+    except OSError:
+        return None
+    return destination
+
+
+def _build_self_delete_script(destination: Path, wait_pid: int) -> str:
+    return f"""
+$ErrorActionPreference = 'Stop'
+$dst = {_ps_quote(str(destination))}
+$waitPid = {int(wait_pid)}
+$markerName = {_ps_quote(INSTALL_MARKER_NAME)}
+$markerValue = {_ps_quote(INSTALL_MARKER_VALUE)}
+
+try {{
+    for ($i = 0; $i -lt 80; $i++) {{
+        if (-not (Get-Process -Id $waitPid -ErrorAction SilentlyContinue)) {{ break }}
+        Start-Sleep -Milliseconds 250
+    }}
+    if (Get-Process -Id $waitPid -ErrorAction SilentlyContinue) {{ throw 'application did not exit' }}
+    if (-not (Test-Path -LiteralPath $dst -PathType Container)) {{ return }}
+    if ((Get-Item -LiteralPath $dst -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) {{
+        throw 'install directory is a reparse point'
+    }}
+    $marker = Join-Path $dst $markerName
+    $exe = Join-Path $dst 'GrokUsagePet.exe'
+    $runtime = Join-Path $dst '_internal'
+    if (-not (Test-Path -LiteralPath $marker -PathType Leaf)) {{ throw 'install marker missing' }}
+    if ((Get-Content -LiteralPath $marker -Raw).Trim() -ne $markerValue) {{ throw 'install marker invalid' }}
+    if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) {{ throw 'application executable missing' }}
+    if (-not (Test-Path -LiteralPath $runtime -PathType Container)) {{ throw 'application runtime missing' }}
+    $reparse = Get-ChildItem -LiteralPath $dst -Recurse -Force -ErrorAction Stop | Where-Object {{
+        $_.Attributes -band [IO.FileAttributes]::ReparsePoint
+    }} | Select-Object -First 1
+    if ($reparse) {{ throw 'install tree contains a reparse point' }}
+    for ($attempt = 0; $attempt -lt 20; $attempt++) {{
+        try {{
+            Remove-Item -LiteralPath $dst -Recurse -Force -ErrorAction Stop
+            break
+        }} catch {{
+            if ($attempt -eq 19) {{ throw }}
+            Start-Sleep -Milliseconds 500
+        }}
+    }}
+    if (Test-Path -LiteralPath $dst) {{ throw 'install directory was not removed' }}
+}} finally {{
+    Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
+}}
+"""
+
+
+def schedule_self_delete(wait_pid: int | None = None) -> bool:
+    destination = validated_self_delete_dir()
+    if destination is None:
+        return False
+    pid = os.getpid() if wait_pid is None else int(wait_pid)
+    script = _build_self_delete_script(destination, pid)
+    handle, name = tempfile.mkstemp(prefix="grok-usage-pet-uninstall-", suffix=".ps1")
+    os.close(handle)
+    script_path = Path(name)
+    try:
+        script_path.write_text(script, encoding="utf-8")
+        subprocess.Popen(
+            ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script_path)],
+            close_fds=True,
+            creationflags=DETACHED_PROCESS | CREATE_NO_WINDOW,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception:
+        script_path.unlink(missing_ok=True)
+        raise
+    return True
+
+
+def format_purge_report(result: dict[str, list[str]], *, program_scheduled: bool = False) -> str:
     lines = [
-        "不会删除 Grok / Cursor / Codex 登录，也不会删除程序文件夹。",
+        "不会删除 Grok / Cursor / Codex 登录。",
         f"计划任务：{', '.join(result['tasks']) or '无'}",
         f"后台进程：{len(result['processes'])} 个",
         f"快捷方式：{len(result['shortcuts'])} 个",
         f"数据目录：{len(result['data'])} 个",
+        "程序文件夹：退出后自动删除" if program_scheduled else "程序文件夹：源码/未验证目录请手动删除",
     ]
     if result["errors"]:
         lines.append("未完成：" + "；".join(result["errors"]))
@@ -1962,7 +2191,7 @@ class UsagePet:
                 release = app_update.fetch_latest_release()
                 self._update_results.put(("checked", release, manual, ""))
             except Exception as exc:
-                self._update_results.put(("checked", None, manual, str(exc)))
+                self._update_results.put(("checked", None, manual, fu.redact_sensitive_text(exc)))
 
         threading.Thread(target=work, daemon=True).start()
 
@@ -1987,7 +2216,7 @@ class UsagePet:
                 payload = app_update.download_verified_payload(release, work_dir)
                 self._update_results.put(("ready", payload, True, ""))
             except Exception as exc:
-                self._update_results.put(("ready", None, True, str(exc)))
+                self._update_results.put(("ready", None, True, fu.redact_sensitive_text(exc)))
 
         threading.Thread(target=work, daemon=True).start()
 
@@ -2059,7 +2288,7 @@ class UsagePet:
                             sync_watcher()
                         except Exception:
                             pass
-                    self._update_results.put(("launched", None, True, str(exc)))
+                    self._update_results.put(("launched", None, True, fu.redact_sensitive_text(exc)))
                     return
                 self._update_results.put(("launched", None, True, ""))
 
@@ -2140,6 +2369,7 @@ class UsagePet:
 
     def _confirm_purge(self) -> None:
         ui = style()
+        remove_program = validated_self_delete_dir() is not None
         parent = self._settings if self._settings is not None and self._settings.winfo_exists() else self.root
         dlg = tk.Toplevel(parent)
         dlg.title("清除本机数据")
@@ -2152,7 +2382,11 @@ class UsagePet:
             text=(
                 "将删除自启、桌面快捷方式和额度快照，然后退出宠物。\n"
                 "不会动 Grok / Cursor / Codex 的登录。\n"
-                "解压或 clone 的程序文件夹请自行删除。"
+                + (
+                    "退出后会自动删除整个便携程序文件夹。"
+                    if remove_program
+                    else "源码 clone 或未验证目录请自行删除。"
+                )
             ),
             bg=ui["settings_bg"],
             fg=ui["settings_text"],
@@ -2182,7 +2416,7 @@ class UsagePet:
         ).pack(side="right")
         tk.Button(
             row,
-            text="清除并退出",
+            text="完整卸载并退出" if remove_program else "清除并退出",
             command=confirm,
             bg=ui.get("accent", "#c94b4b"),
             fg="#ffffff",
@@ -2197,10 +2431,20 @@ class UsagePet:
 
     def _run_purge(self) -> None:
         result = purge_local_residue()
-        report = format_purge_report(result)
         if result["errors"]:
-            self._toast(report)
+            self._toast(format_purge_report(result))
             self.root.after(50, lambda: self.quit(keep_data=False))
+            return
+        try:
+            program_scheduled = schedule_self_delete()
+        except Exception as exc:
+            result["errors"].append(f"程序文件夹：{exc}")
+            self._toast(format_purge_report(result))
+            self.root.after(50, lambda: self.quit(keep_data=False))
+            return
+        if not program_scheduled and getattr(sys, "frozen", False):
+            self._toast(format_purge_report(result))
+            self.root.after(800, lambda: self.quit(keep_data=False))
             return
         self.quit(keep_data=False)
 
@@ -2242,7 +2486,7 @@ class UsagePet:
             if snap.get("errors"):
                 err = "；".join(f"{k}: {v}" for k, v in snap["errors"].items())
         except (Exception, SystemExit) as exc:
-            err = str(exc)
+            err = fu.redact_sensitive_text(exc)
         self._fetch_results.put((snap, err))
 
     def _poll_fetch_results(self) -> None:
@@ -2734,7 +2978,13 @@ def main() -> None:
         return
     if "--uninstall" in args:
         result = purge_local_residue()
-        print(format_purge_report(result), flush=True)
+        program_scheduled = False
+        if not result["errors"]:
+            try:
+                program_scheduled = schedule_self_delete()
+            except Exception as exc:
+                result["errors"].append(f"program folder: {exc}")
+        print(format_purge_report(result, program_scheduled=program_scheduled), flush=True)
         if result["errors"]:
             raise SystemExit(1)
         return
@@ -2767,7 +3017,7 @@ def main() -> None:
         import traceback
 
         try:
-            log.write_text(traceback.format_exc(), encoding="utf-8")
+            log.write_text(fu.redact_sensitive_text(traceback.format_exc(), limit=4000), encoding="utf-8")
         except OSError:
             pass
         raise

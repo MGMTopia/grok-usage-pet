@@ -36,6 +36,9 @@ class BuildConfigTests(unittest.TestCase):
         self.assertIn("--require-hashes -r requirements-build.lock", script)
         self.assertIn('$dependencyCheckCode | & $PythonExe -', script)
         self.assertIn('$packageLicenseCode | & $PythonExe -', script)
+        self.assertIn('.grok-usage-pet-install', script)
+        self.assertIn('grok-usage-pet-portable-v1', script)
+        self.assertIn('VERSION must be a numeric semantic version', script)
 
     def test_dependency_files_cover_runtime_and_builder(self) -> None:
         runtime = (ROOT / "requirements.txt").read_text(encoding="utf-8")

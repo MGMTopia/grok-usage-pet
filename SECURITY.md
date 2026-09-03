@@ -60,7 +60,7 @@ The app stores UI state, logs, and the last usable quota snapshot under
 `%LOCALAPPDATA%\GrokUsagePet`. On first v0.3 run it copies state and snapshots
 from the historical `%LOCALAPPDATA%\GrokUsagePetKawaii` directory only when the
 new destination file does not already exist. A quota snapshot can contain
-Cursor email, plan/status metadata, reset times, and service error details.
+Cursor plan labels, reset times, bounded service display messages, and error details.
 Treat these files as private local data. Command-line refreshes report only
 whether the local snapshot was updated; they do not print authenticated quota
 values or provider error details to stdout/stderr. The plain-text summary also
@@ -69,13 +69,20 @@ omits provider error details.
 If Cursor launch integration is enabled, the app updates
 `%USERPROFILE%\.cursor\hooks.json`. It preserves unrelated fields and removes
 only entries marked `managedBy: grok-usage-pet`.
+The separate Grok hook file carries the same ownership marker; an unknown or
+invalid file at that path is preserved and reported instead of overwritten or
+deleted.
 
 Settings → 卸载, or `pet.py --uninstall` / `GrokUsagePet.exe --uninstall`,
-removes those autostart hooks, the GrokUsagePet scheduled tasks (including the
-legacy kawaii names), any running pet or watcher instances, the desktop
+removes owned autostart hooks, GrokUsagePet scheduled tasks whose executable
+belongs to the current install (including legacy kawaii names), running pet or
+watcher instances from that same install, the desktop
 shortcut, and the `%LOCALAPPDATA%\GrokUsagePet` / `GrokUsagePetKawaii` data
-directories. It does not delete Grok, Cursor, or Codex login files, and it does
-not delete the program folder.
+directories. It never deletes Grok, Cursor, or Codex login files. A frozen
+portable release also deletes its own folder after exit only when the folder has
+the pack-time marker, exact release-directory format, expected executable and
+runtime, and contains no symbolic links or Windows reparse points. Source clones,
+renamed folders, and unmarked directories are never recursively deleted.
 
 ## Release safety
 

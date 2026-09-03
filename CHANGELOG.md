@@ -19,6 +19,11 @@ Optional GitHub update checks. Git tag: `v0.3.8`.
   failure, restore the watcher when enabled, and remove staging/helper files.
 - Feed pack-time Python snippets through stdin so Windows PowerShell does not
   strip quotes from `python -c`.
+- Complete uninstall now removes a verified portable release folder after the
+  app exits, while refusing broad, renamed, unmarked, symlink, or reparse-point
+  directories and never deleting Grok, Cursor, or Codex login files.
+- Mark Grok hook ownership, preserve unknown hook files, and remove only tasks
+  and processes whose executable belongs to the current install directory.
 
 ## 0.3.7 — 2026-09-02
 
