@@ -54,6 +54,7 @@ ASSETS = LEGACY_ASSETS
 HOOK_FILE = fu.grok_home() / "hooks" / "usage-pet.json"
 CURSOR_HOOK_FILE = Path.home() / ".cursor" / "hooks.json"
 CURSOR_HOOK_MARKER = cursor_hooks.MARKER
+GROK_HOOK_MARKER = "grok-usage-pet"
 BG = "#1b1b1f"
 CHROMA = "#ff00ff"
 CHROMA_RGB = (255, 0, 255)
@@ -739,7 +740,21 @@ def launcher_bat() -> Path | None:
 def install_hook() -> Path:
     HOOK_FILE.parent.mkdir(parents=True, exist_ok=True)
     command = str(launcher_bat().resolve()) if launcher_bat() else hook_command()
-    payload = {
+    payload = _grok_hook_payload(command)
+    if HOOK_FILE.exists():
+        try:
+            existing = json.loads(HOOK_FILE.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise RuntimeError("Grok hook 配置无法读取，未作修改") from exc
+        if not _is_our_grok_hook_payload(existing, command):
+            raise RuntimeError("Grok hook 路径已被其他配置使用，未作修改")
+    write_text_atomic(HOOK_FILE, json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
+    return HOOK_FILE
+
+
+def _grok_hook_payload(command: str) -> dict:
+    return {
+        "managedBy": GROK_HOOK_MARKER,
         "hooks": {
             "SessionStart": [
                 {
@@ -754,13 +769,31 @@ def install_hook() -> Path:
             ]
         }
     }
-    HOOK_FILE.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    return HOOK_FILE
+
+
+def _is_our_grok_hook_payload(payload: object, command: str | None = None) -> bool:
+    if not isinstance(payload, dict):
+        return False
+    if command is None:
+        command = str(launcher_bat().resolve()) if launcher_bat() else hook_command()
+    expected = _grok_hook_payload(command)
+    if payload == expected:
+        return True
+    legacy = dict(expected)
+    legacy.pop("managedBy", None)
+    return payload == legacy
 
 
 def uninstall_hook() -> None:
-    if HOOK_FILE.exists():
-        HOOK_FILE.unlink()
+    if not HOOK_FILE.exists():
+        return
+    try:
+        payload = json.loads(HOOK_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError("Grok hook 配置无法读取，未作修改") from exc
+    if not _is_our_grok_hook_payload(payload):
+        raise RuntimeError("Grok hook 不属于本程序，未作修改")
+    HOOK_FILE.unlink()
 
 
 def cursor_hook_command() -> str:
@@ -805,7 +838,12 @@ def sync_watcher() -> None:
 
 
 def grok_autostart_on() -> bool:
-    return HOOK_FILE.exists()
+    if not HOOK_FILE.exists():
+        return False
+    try:
+        return _is_our_grok_hook_payload(json.loads(HOOK_FILE.read_text(encoding="utf-8")))
+    except (OSError, json.JSONDecodeError):
+        return False
 
 
 def cursor_autostart_on() -> bool:
@@ -842,53 +880,107 @@ def app_data_directories() -> list[Path]:
     return dirs
 
 
+_REMOVE_OWNED_TASKS_PS = r"""
+$ErrorActionPreference = 'Stop'
+$installRoot = [IO.Path]::GetFullPath($env:GROK_USAGE_PET_INSTALL_ROOT).TrimEnd('\')
+$taskNames = $env:GROK_USAGE_PET_TASK_NAMES -split '\|'
+$productNames = @('GrokUsagePet.exe', 'GrokUsagePetKawaii.exe')
+$pythonNames = @('python.exe', 'pythonw.exe')
+$sourceScripts = @(
+    (Join-Path $installRoot 'pet.py'),
+    (Join-Path $installRoot 'watch_apps.py')
+)
+
+foreach ($name in $taskNames) {
+    try {
+        $task = Get-ScheduledTask -TaskPath '\' -TaskName $name -ErrorAction SilentlyContinue
+        if (-not $task) { continue }
+        $owned = $false
+        foreach ($action in $task.Actions) {
+            $raw = [Environment]::ExpandEnvironmentVariables([string]$action.Execute).Trim('"')
+            $rawArgs = [Environment]::ExpandEnvironmentVariables([string]$action.Arguments).Trim()
+            if (-not [IO.Path]::IsPathRooted($raw)) { continue }
+            $candidate = [IO.Path]::GetFullPath($raw)
+            if (($productNames -icontains [IO.Path]::GetFileName($candidate)) -and
+                ([IO.Path]::GetDirectoryName($candidate) -ieq $installRoot)) {
+                $owned = $true
+                break
+            }
+            if ($pythonNames -icontains [IO.Path]::GetFileName($candidate)) {
+                foreach ($sourceScript in $sourceScripts) {
+                    if (($rawArgs -ieq $sourceScript) -or ($rawArgs -ieq ('"' + $sourceScript + '"'))) {
+                        $owned = $true
+                        break
+                    }
+                }
+                if ($owned) { break }
+            }
+        }
+        if (-not $owned) { continue }
+        if ($name -like '*Watch') {
+            Stop-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
+        }
+        Unregister-ScheduledTask -TaskPath '\' -TaskName $name -Confirm:$false -ErrorAction Stop
+        Write-Output $name
+    } catch {
+        Write-Output ('ERROR::' + $name + '::' + $_.Exception.Message)
+    }
+}
+"""
+
+
 def remove_scheduled_tasks() -> tuple[list[str], list[str]]:
     removed: list[str] = []
     errors: list[str] = []
     if os.name != "nt":
         return removed, errors
-    flags = CREATE_NO_WINDOW
-    for name in APP_TASK_NAMES:
-        # Deleting a task does not stop an already-running task instance.
-        # Never end the Launch task here: the current GUI may itself be that
-        # instance. The scoped process sweep below stops other GUI instances.
-        if name in WATCH_TASK_NAMES:
-            try:
-                subprocess.run(
-                    ["schtasks", "/End", "/TN", name],
-                    capture_output=True,
-                    creationflags=flags,
-                    timeout=15,
-                )
-            except (OSError, subprocess.TimeoutExpired) as exc:
-                errors.append(f"end {name}: {exc}")
-        try:
-            ran = subprocess.run(
-                ["schtasks", "/Delete", "/TN", name, "/F"],
-                capture_output=True,
-                creationflags=flags,
-                timeout=15,
-            )
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            errors.append(f"delete {name}: {exc}")
-            continue
-        if ran.returncode == 0:
-            removed.append(name)
+    env = os.environ.copy()
+    env["GROK_USAGE_PET_INSTALL_ROOT"] = str(fu.install_dir().resolve())
+    env["GROK_USAGE_PET_TASK_NAMES"] = "|".join(APP_TASK_NAMES)
+    try:
+        ran = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", _REMOVE_OWNED_TASKS_PS],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="ignore",
+            creationflags=CREATE_NO_WINDOW,
+            timeout=30,
+            env=env,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return removed, [f"task cleanup: {fu.redact_sensitive_text(exc)}"]
+    if ran.returncode != 0:
+        errors.append(f"task cleanup: {fu.redact_sensitive_text(ran.stderr or ran.returncode)}")
+    for line in ran.stdout.splitlines():
+        if line.startswith("ERROR::"):
+            errors.append(fu.redact_sensitive_text(line.removeprefix("ERROR::")))
+        elif line in APP_TASK_NAMES:
+            removed.append(line)
     return removed, errors
 
 
 _STOP_APP_PROCESSES_PS = r"""
 $ErrorActionPreference = 'Stop'
 $currentPid = [int]$env:GROK_USAGE_PET_CURRENT_PID
-$sourceRoot = [IO.Path]::GetFullPath($env:GROK_USAGE_PET_SOURCE_ROOT).TrimEnd('\')
-$sourcePattern = [regex]::Escape($sourceRoot + '\')
+$installRoot = [IO.Path]::GetFullPath($env:GROK_USAGE_PET_INSTALL_ROOT).TrimEnd('\')
+$sourcePattern = [regex]::Escape($installRoot + '\')
 $productNames = @('GrokUsagePet.exe', 'GrokUsagePetKawaii.exe')
 $pythonNames = @('python.exe', 'pythonw.exe')
 
 Get-CimInstance Win32_Process | Where-Object {
     if ($_.ProcessId -eq $currentPid) { return $false }
     $name = [string]$_.Name
-    if ($productNames -icontains $name) { return $true }
+    if ($productNames -icontains $name) {
+        $rawPath = [string]$_.ExecutablePath
+        if (-not $rawPath) { return $false }
+        try {
+            $candidate = [IO.Path]::GetFullPath([Environment]::ExpandEnvironmentVariables($rawPath).Trim('"'))
+            return [IO.Path]::GetDirectoryName($candidate) -ieq $installRoot
+        } catch {
+            return $false
+        }
+    }
     if ($pythonNames -inotcontains $name) { return $false }
     $command = [string]$_.CommandLine
     return $command -match ('(?i)"?' + $sourcePattern + '(?:pet|watch_apps)\.py"?(?:\s|$)')
@@ -917,7 +1009,7 @@ def stop_app_processes() -> list[str]:
         return []
     env = os.environ.copy()
     env["GROK_USAGE_PET_CURRENT_PID"] = str(os.getpid())
-    env["GROK_USAGE_PET_SOURCE_ROOT"] = str(fu.resource_dir().resolve())
+    env["GROK_USAGE_PET_INSTALL_ROOT"] = str(fu.install_dir().resolve())
     ran = subprocess.run(
         ["powershell", "-NoProfile", "-Command", _STOP_APP_PROCESSES_PS],
         capture_output=True,

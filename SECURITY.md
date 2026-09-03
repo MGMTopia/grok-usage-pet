@@ -69,10 +69,14 @@ omits provider error details.
 If Cursor launch integration is enabled, the app updates
 `%USERPROFILE%\.cursor\hooks.json`. It preserves unrelated fields and removes
 only entries marked `managedBy: grok-usage-pet`.
+The separate Grok hook file carries the same ownership marker; an unknown or
+invalid file at that path is preserved and reported instead of overwritten or
+deleted.
 
 Settings → 卸载, or `pet.py --uninstall` / `GrokUsagePet.exe --uninstall`,
-removes those autostart hooks, the GrokUsagePet scheduled tasks (including the
-legacy kawaii names), any running pet or watcher instances, the desktop
+removes owned autostart hooks, GrokUsagePet scheduled tasks whose executable
+belongs to the current install (including legacy kawaii names), running pet or
+watcher instances from that same install, the desktop
 shortcut, and the `%LOCALAPPDATA%\GrokUsagePet` / `GrokUsagePetKawaii` data
 directories. It never deletes Grok, Cursor, or Codex login files. A frozen
 portable release also deletes its own folder after exit only when the folder has
