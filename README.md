@@ -1,16 +1,33 @@
 # Grok 额度桌宠
 
-**Grok usage desktop pet** for Windows.
+**Grok usage desktop pet** · [中文](#安装) · [English](#install)
 
 <p align="center">
   <img src="docs/preview.gif" alt="Grok 额度桌宠 / Grok usage desktop pet showing SuperGrok, Grok Bot, Cursor, and Codex remaining quota" />
 </p>
 
-Unofficial overlay for SuperGrok weekly, Grok Bot weekly, Cursor monthly, and Codex quota. Not an xAI, Cursor, or OpenAI product. Program code is MIT licensed; character assets have separate terms in [ASSETS_NOTICE.md](ASSETS_NOTICE.md).
+Windows 上的非官方额度桌宠，用来看 SuperGrok 周额度、Grok Bot 周额度、Cursor 月额度，以及 Codex 余量。不是 xAI、Cursor 或 OpenAI 官方软件。程序代码是 MIT；角色素材见 [ASSETS_NOTICE.md](ASSETS_NOTICE.md)。
+
+更完整的中文说明：[使用说明.txt](使用说明.txt) · [README.zh-CN.md](README.zh-CN.md)
+
+## 安装
+
+当前版本：**0.3.8**（`v0.3.8`）。
+
+从 [GitHub Release](https://github.com/MGMTopia/grok-usage-pet/releases/latest) 下载 **`GrokUsagePet-v0.3.8-Windows-x64.zip`**。不必装 Python。
+
+1. 解压**整个文件夹**，不要只拷贝 exe。
+2. 本机先登录一次（登哪个就显示哪条）：
+   - SuperGrok：`grok login`
+   - Grok Bot / Cursor：在 Cursor 里登录
+   - Codex：ChatGPT 套餐的 `codex login`（不要用纯 API Key）
+3. 双击 `GrokUsagePet.exe`。
+
+Windows 10/11。未签名，SmartScreen 可能要选「仍要运行」。数据在 `%LOCALAPPDATA%\GrokUsagePet`。设置 → 卸载，或 `--uninstall`，只清本机集成，不动 Grok / Cursor / Codex 登录。
 
 ## Install
 
-Current release: **0.3.8** (`v0.3.8`).
+Unofficial overlay for SuperGrok weekly, Grok Bot weekly, Cursor monthly, and Codex quota. Not an xAI, Cursor, or OpenAI product.
 
 Download **`GrokUsagePet-v0.3.8-Windows-x64.zip`** from the
 [latest GitHub Release](https://github.com/MGMTopia/grok-usage-pet/releases/latest).
@@ -20,9 +37,7 @@ Python is not required.
 2. Sign in to at least one source (`grok login`, Cursor, or ChatGPT-plan `codex login`).
 3. Double-click `GrokUsagePet.exe`.
 
-Windows 10/11. The build is unsigned, so SmartScreen may ask you to run it anyway. End-user steps: [使用说明.txt](使用说明.txt)
-
-Data is stored in `%LOCALAPPDATA%\GrokUsagePet`. Settings → 卸载, or `--uninstall`, removes local integration residue without touching Grok, Cursor, or Codex logins.
+Windows 10/11. The build is unsigned, so SmartScreen may ask you to run it anyway.
 
 ## Run from source
 
