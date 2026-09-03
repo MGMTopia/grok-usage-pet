@@ -1,3 +1,3 @@
 """Single application version source."""
 
-APP_VERSION = "0.3.5"
+APP_VERSION = "0.3.6"

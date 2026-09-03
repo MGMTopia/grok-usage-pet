@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 0.3.6 — 2026-09-02
+
+Complete-uninstall patch. Git tag: `v0.3.6`.
+
+- Stop running watcher task instances before unregistering their scheduled tasks.
+- Stop remaining source and frozen pet/watcher processes with project-scoped matching.
+- Continue removing the other known tasks if one task command fails or times out.
+- Keep Grok, Cursor, and Codex login files and the portable program directory untouched.
+
 ## 0.3.5 — 2026-09-01
 
 Cleanup and uninstall update. Git tag: `v0.3.5`.

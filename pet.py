@@ -816,6 +816,7 @@ APP_TASK_NAMES = (
     "GrokUsagePetKawaiiLaunch",
     "GrokUsagePetKawaiiWatch",
 )
+WATCH_TASK_NAMES = tuple(name for name in APP_TASK_NAMES if name.endswith("Watch"))
 APP_SHORTCUT_NAMES = (
     "Grok额度宠物.lnk",
     "Grok额度宠物-可爱版.lnk",
@@ -835,20 +836,98 @@ def app_data_directories() -> list[Path]:
     return dirs
 
 
-def remove_scheduled_tasks() -> list[str]:
+def remove_scheduled_tasks() -> tuple[list[str], list[str]]:
     removed: list[str] = []
+    errors: list[str] = []
     if os.name != "nt":
-        return removed
+        return removed, errors
     flags = CREATE_NO_WINDOW
     for name in APP_TASK_NAMES:
-        ran = subprocess.run(
-            ["schtasks", "/Delete", "/TN", name, "/F"],
-            capture_output=True,
-            creationflags=flags,
-        )
+        # Deleting a task does not stop an already-running task instance.
+        # Never end the Launch task here: the current GUI may itself be that
+        # instance. The scoped process sweep below stops other GUI instances.
+        if name in WATCH_TASK_NAMES:
+            try:
+                subprocess.run(
+                    ["schtasks", "/End", "/TN", name],
+                    capture_output=True,
+                    creationflags=flags,
+                    timeout=15,
+                )
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                errors.append(f"end {name}: {exc}")
+        try:
+            ran = subprocess.run(
+                ["schtasks", "/Delete", "/TN", name, "/F"],
+                capture_output=True,
+                creationflags=flags,
+                timeout=15,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            errors.append(f"delete {name}: {exc}")
+            continue
         if ran.returncode == 0:
             removed.append(name)
-    return removed
+    return removed, errors
+
+
+_STOP_APP_PROCESSES_PS = r"""
+$ErrorActionPreference = 'Stop'
+$currentPid = [int]$env:GROK_USAGE_PET_CURRENT_PID
+$sourceRoot = [IO.Path]::GetFullPath($env:GROK_USAGE_PET_SOURCE_ROOT).TrimEnd('\')
+$sourcePattern = [regex]::Escape($sourceRoot + '\')
+$productNames = @('GrokUsagePet.exe', 'GrokUsagePetKawaii.exe')
+$pythonNames = @('python.exe', 'pythonw.exe')
+
+Get-CimInstance Win32_Process | Where-Object {
+    if ($_.ProcessId -eq $currentPid) { return $false }
+    $name = [string]$_.Name
+    if ($productNames -icontains $name) { return $true }
+    if ($pythonNames -inotcontains $name) { return $false }
+    $command = [string]$_.CommandLine
+    return $command -match ('(?i)"?' + $sourcePattern + '(?:pet|watch_apps)\.py"?(?:\s|$)')
+} | ForEach-Object {
+    $processId = [int]$_.ProcessId
+    try {
+        Stop-Process -Id $processId -Force -ErrorAction Stop
+    } catch {
+        if (Get-Process -Id $processId -ErrorAction SilentlyContinue) { throw }
+    }
+    for ($attempt = 0; $attempt -lt 25; $attempt++) {
+        if (-not (Get-Process -Id $processId -ErrorAction SilentlyContinue)) { break }
+        Start-Sleep -Milliseconds 100
+    }
+    if (Get-Process -Id $processId -ErrorAction SilentlyContinue) {
+        throw "Could not stop managed process $processId"
+    }
+    Write-Output $processId
+}
+"""
+
+
+def stop_app_processes() -> list[str]:
+    """Stop other pet/watcher instances without touching unrelated processes."""
+    if os.name != "nt":
+        return []
+    env = os.environ.copy()
+    env["GROK_USAGE_PET_CURRENT_PID"] = str(os.getpid())
+    env["GROK_USAGE_PET_SOURCE_ROOT"] = str(fu.resource_dir().resolve())
+    ran = subprocess.run(
+        ["powershell", "-NoProfile", "-Command", _STOP_APP_PROCESSES_PS],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="ignore",
+        creationflags=CREATE_NO_WINDOW,
+        timeout=30,
+        env=env,
+    )
+    if ran.returncode != 0:
+        detail = (ran.stderr or "").strip()
+        raise RuntimeError(detail or f"PowerShell exited with {ran.returncode}")
+    stopped = {line.strip() for line in ran.stdout.splitlines() if line.strip().isdigit()}
+    stopped.discard(str(os.getpid()))
+    return sorted(stopped, key=int)
 
 
 def remove_desktop_shortcuts(desktop: Path | None = None) -> list[Path]:
@@ -878,9 +957,15 @@ def purge_local_residue() -> dict[str, list[str]]:
         errors.append(f"Cursor hook: {exc}")
     tasks: list[str] = []
     try:
-        tasks = remove_scheduled_tasks()
+        tasks, task_errors = remove_scheduled_tasks()
+        errors.extend(f"scheduled tasks: {detail}" for detail in task_errors)
     except Exception as exc:
         errors.append(f"scheduled tasks: {exc}")
+    processes: list[str] = []
+    try:
+        processes = stop_app_processes()
+    except Exception as exc:
+        errors.append(f"running processes: {exc}")
     shortcuts: list[str] = []
     try:
         shortcuts = [str(path) for path in remove_desktop_shortcuts()]
@@ -895,13 +980,20 @@ def purge_local_residue() -> dict[str, list[str]]:
             data.append(str(path))
         except OSError as exc:
             errors.append(f"{path}: {exc}")
-    return {"tasks": tasks, "shortcuts": shortcuts, "data": data, "errors": errors}
+    return {
+        "tasks": tasks,
+        "processes": processes,
+        "shortcuts": shortcuts,
+        "data": data,
+        "errors": errors,
+    }
 
 
 def format_purge_report(result: dict[str, list[str]]) -> str:
     lines = [
         "不会删除 Grok / Cursor / Codex 登录，也不会删除程序文件夹。",
         f"计划任务：{', '.join(result['tasks']) or '无'}",
+        f"后台进程：{len(result['processes'])} 个",
         f"快捷方式：{len(result['shortcuts'])} 个",
         f"数据目录：{len(result['data'])} 个",
     ]

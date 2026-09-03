@@ -56,5 +56,5 @@ Grok Bot、Cursor 和 Codex 的额度与重置时间。它不是 xAI、Cursor �
 ## 卸载
 
 设置 → 卸载 →「清除本机数据并退出」，或运行 `GrokUsagePet.exe --uninstall`。
-这会删除自启、桌面快捷方式和本地额度数据，不会退出 Grok / Cursor / Codex，
-也不会删除解压或 clone 出来的程序文件夹。
+这会先停止宠物和后台 watcher，再删除自启、桌面快捷方式和本地额度数据；
+不会退出 Grok / Cursor / Codex，也不会删除解压或 clone 出来的程序文件夹。

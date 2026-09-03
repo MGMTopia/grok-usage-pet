@@ -1,6 +1,6 @@
 # Grok 额度宠物
 
-Current release: **0.3.5** (`v0.3.5`).
+Current release: **0.3.6** (`v0.3.6`).
 
 Unofficial desktop pet for SuperGrok weekly, Grok Bot weekly, Cursor monthly pools, and locally signed-in Codex quota windows. Not an xAI, Cursor, or OpenAI product. Program code is MIT licensed; character assets have separate terms in [ASSETS_NOTICE.md](ASSETS_NOTICE.md).
 
@@ -12,7 +12,7 @@ End-user instructions: [使用说明.txt](使用说明.txt)
 pythonw pet.py
 ```
 
-Data is stored in `%LOCALAPPDATA%\GrokUsagePet`. A first run can copy missing state from the legacy `%LOCALAPPDATA%\GrokUsagePetKawaii` directory without deleting it. Settings → 卸载, or `--uninstall`, removes that local residue without touching Grok, Cursor, or Codex logins.
+Data is stored in `%LOCALAPPDATA%\GrokUsagePet`. A first run can copy missing state from the legacy `%LOCALAPPDATA%\GrokUsagePetKawaii` directory without deleting it. Settings → 卸载, or `--uninstall`, stops pet/watcher instances and removes local integration residue without touching Grok, Cursor, or Codex logins.
 
 Fetching does not require Grok Build, Cursor, or Codex to be running. SuperGrok and ChatGPT-login Codex sessions can refresh their local OAuth credentials when needed; API-key Codex mode has no subscription quota percentage.
 
@@ -47,7 +47,7 @@ The preview renders fixed sample quotas and exits after three seconds without sa
 
 | Zip | What |
 |-----|------|
-| `GrokUsagePet-v0.3.5-Windows-x64.zip` | Current release (`GrokUsagePet.exe`). Rebuild with `pack-windows.ps1`. |
+| `GrokUsagePet-v0.3.6-Windows-x64.zip` | Current release (`GrokUsagePet.exe`). Rebuild with `pack-windows.ps1`. |
 | `GrokUsagePet-kawaii.zip` | Legacy v0.2.0 compatibility archive; not the current release. |
 
 Do not copy `auth.json`, Cursor `state.vscdb`, or `pet_state.json` into a zip.

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import stat
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -279,6 +280,47 @@ class CursorHookTests(unittest.TestCase):
         self.assertEqual(json.loads(self.hooks_file.read_text(encoding="utf-8")), payload)
 
 
+class ProcessCleanupTests(unittest.TestCase):
+    @unittest.skipUnless(os.name == "nt", "Windows process discovery only")
+    def test_process_sweep_is_scoped_to_project_commands(self) -> None:
+        result = mock.Mock(returncode=0, stdout="202\n101\nnot-a-pid\n", stderr="")
+        with mock.patch.object(pet.subprocess, "run", return_value=result) as run:
+            stopped = pet.stop_app_processes()
+
+        self.assertEqual(stopped, ["101", "202"])
+        args = run.call_args.args[0]
+        kwargs = run.call_args.kwargs
+        self.assertEqual(args[:3], ["powershell", "-NoProfile", "-Command"])
+        script = args[3]
+        self.assertIn("GrokUsagePet.exe", script)
+        self.assertIn("GrokUsagePetKawaii.exe", script)
+        self.assertIn("(?:pet|watch_apps)", script)
+        self.assertNotIn("grok.exe'", script.lower())
+        self.assertEqual(kwargs["env"]["GROK_USAGE_PET_CURRENT_PID"], str(os.getpid()))
+        self.assertEqual(
+            Path(kwargs["env"]["GROK_USAGE_PET_SOURCE_ROOT"]),
+            fu.resource_dir().resolve(),
+        )
+
+    @unittest.skipUnless(os.name == "nt", "Windows scheduled tasks only")
+    def test_task_cleanup_continues_after_one_command_error(self) -> None:
+        calls: list[list[str]] = []
+
+        def fake_run(args, **_kwargs):
+            calls.append(list(args))
+            if args[:4] == ["schtasks", "/Delete", "/TN", "GrokUsagePetLaunch"]:
+                raise subprocess.TimeoutExpired(args, 15)
+            return mock.Mock(returncode=1)
+
+        with mock.patch.object(pet.subprocess, "run", side_effect=fake_run):
+            removed, errors = pet.remove_scheduled_tasks()
+
+        self.assertEqual(removed, [])
+        self.assertTrue(any("delete GrokUsagePetLaunch" in error for error in errors))
+        for name in pet.APP_TASK_NAMES:
+            self.assertIn(["schtasks", "/Delete", "/TN", name, "/F"], calls)
+
+
 class PurgeResidueTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
@@ -322,6 +364,7 @@ class PurgeResidueTests(unittest.TestCase):
             mock.patch.object(pet, "CURSOR_HOOK_FILE", self.hooks),
             mock.patch.object(pet, "desktop_dir", return_value=self.desktop),
             mock.patch.object(pet, "cursor_hook_command", return_value="our.bat"),
+            mock.patch.object(pet, "stop_app_processes", return_value=["101", "202"]),
             mock.patch.object(pet.subprocess, "run", side_effect=self._fake_schtasks),
         ]
         for patcher in self.patches:
@@ -332,12 +375,17 @@ class PurgeResidueTests(unittest.TestCase):
             patcher.stop()
         self.tmp.cleanup()
 
-    @staticmethod
-    def _fake_schtasks(args, **_kwargs):
+    def _fake_schtasks(self, args, **_kwargs):
+        if not hasattr(self, "schtasks_calls"):
+            self.schtasks_calls = []
+        self.schtasks_calls.append(list(args))
         result = mock.Mock()
         result.returncode = 1
         if len(args) >= 4 and args[:3] == ["schtasks", "/Delete", "/TN"]:
             if args[3] in pet.APP_TASK_NAMES:
+                result.returncode = 0
+        if len(args) >= 4 and args[:3] == ["schtasks", "/End", "/TN"]:
+            if args[3] in pet.WATCH_TASK_NAMES:
                 result.returncode = 0
         return result
 
@@ -354,9 +402,15 @@ class PurgeResidueTests(unittest.TestCase):
         self.assertEqual(json.loads(self.auth.read_text(encoding="utf-8"))["account"]["key"], "secret")
         self.assertIn(str(self.data), result["data"])
         self.assertIn(str(self.legacy), result["data"])
+        self.assertEqual(result["processes"], ["101", "202"])
         self.assertEqual(result["errors"], [])
         if os.name == "nt":
             self.assertEqual(set(result["tasks"]), set(pet.APP_TASK_NAMES))
+            for name in pet.WATCH_TASK_NAMES:
+                end = ["schtasks", "/End", "/TN", name]
+                delete = ["schtasks", "/Delete", "/TN", name, "/F"]
+                self.assertIn(end, self.schtasks_calls)
+                self.assertLess(self.schtasks_calls.index(end), self.schtasks_calls.index(delete))
 
 
 if __name__ == "__main__":
