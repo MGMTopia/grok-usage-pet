@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 0.3.10 — 2026-09-03
+
+Mouse-direction interaction reliability fix. Git tag: `v0.3.10`.
+
+- Let the 16-direction pointer look animation override ambient login, refresh,
+  and open-quota-bubble states, while preserving drag and one-shot actions.
+- Add regression coverage for fresh-login, busy-refresh, bubble-open, drag, and
+  one-shot animation priority.
+
 ## 0.3.9 — 2026-09-03
 
 GitHub owner retarget after the account rename. Git tag: `v0.3.9`.
