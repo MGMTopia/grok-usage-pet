@@ -1,7 +1,11 @@
 # Security and privacy
 
 Grok Usage Pet is local-first and has no telemetry, analytics, advertising,
-crash-reporting service, machine fingerprinting, or automatic updater.
+crash-reporting service, or machine fingerprinting. Optional update checks
+query only the GitHub Releases API for this repository. Installing an update
+requires an explicit click, HTTPS, a strict versioned filename allowlist, an
+immutable GitHub Release, matching API asset digests, and a matching SHA256
+checksum file. There is no silent replacement and no other update server.
 
 ## Local credentials
 
@@ -38,12 +42,17 @@ Quota retrieval contacts only:
 - `https://api2.cursor.sh` for Cursor and Grok Bot quota information;
 - `https://auth.openai.com` to refresh a ChatGPT-login Codex session;
 - `https://chatgpt.com/backend-api/wham/usage` for Codex 5-hour and weekly
-  remaining percentages.
+  remaining percentages;
+- `https://api.github.com/repos/liruilong0805/grok-usage-pet/releases/latest`
+  when update checks are enabled, plus GitHub download hosts for the versioned
+  Windows zip and `.sha256` files after the user chooses to install.
 
 The OIDC token endpoint is discovered dynamically from the configured issuer,
 so it is not necessarily a single fixed URL.
 
 The app does not upload source code, project files, chats, or prompts.
+GitHub CDN redirects are accepted only when they originate from an allowlisted
+versioned release-asset URL; arbitrary CDN URLs cannot be requested directly.
 
 ## Local data
 
@@ -77,6 +86,14 @@ license copies, and GitHub build-provenance attestations. Skin sprite sheets
 must be bounded WebP images; untrusted manifest dimensions and animation
 values are clamped to safe limits. GitHub CodeQL default setup scans Python and
 GitHub Actions on protected-branch pushes and weekly.
+
+In-app updates reject path traversal, symbolic links, Windows special names,
+case-colliding paths, excessive entry counts, and excessive aggregate expanded
+size. The new tree is copied beside the current installation and smoke-tested;
+the current app exits only after an explicit preflight readiness signal. A
+failed preflight keeps the current tree running and restores the watcher, while
+a failed switch restores and restarts the old tree. Staging, readiness, and
+helper files are removed on completion or failure.
 
 ## Reporting a vulnerability
 

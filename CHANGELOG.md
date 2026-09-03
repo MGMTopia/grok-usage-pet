@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+## 0.3.8 — 2026-09-03
+
+Optional GitHub update checks. Git tag: `v0.3.8`.
+
+- Add optional GitHub Latest Release checks and a verified in-app Windows zip
+  install (HTTPS, strict filename allowlist, immutable-release asset digests,
+  SHA256, no silent replace).
+- Settings: 启动后检查 GitHub 新版本 (default on), 现在检查, 下载并安装.
+- Source checkouts only open the GitHub release page; they do not rewrite the
+  working tree. Frozen installs stage under `%LOCALAPPDATA%\GrokUsagePet\update-staging`.
+- Preflight archive entry count, aggregate extraction size, Windows special
+  paths, case collisions, and symbolic links before writing extracted files.
+- Smoke-test a complete sibling copy and wait for its explicit readiness signal
+  before the current app exits; switch directories transactionally, roll back on
+  failure, restore the watcher when enabled, and remove staging/helper files.
+- Feed pack-time Python snippets through stdin so Windows PowerShell does not
+  strip quotes from `python -c`.
+
 ## 0.3.7 — 2026-09-02
 
 Privacy and code-scanning patch. Git tag: `v0.3.7`.

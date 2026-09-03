@@ -24,6 +24,9 @@ Grok Bot、Cursor 和 Codex 的额度与重置时间。它不是 xAI、Cursor �
 - 拖动宠物：移动位置；
 - 双击：固定或取消固定额度条（仅本次运行，重启后默认收起）；
 - 右键：刷新、设置主题或退出。
+- 设置 → 更新：开关「启动后检查 GitHub 新版本」（默认开，约每天一次）；
+  「现在检查」立刻查询；exe 可点「下载并安装」，校验 SHA256 后替换。
+  源码运行只会打开发布页，不会改源码目录。不会静默安装。
 
 程序约每 60 秒刷新一次。如果只有一个服务已登录，另一个服务空白属于
 正常情况。所有来源都失败时会保留上一次有效快照，不会用空数据覆盖。
@@ -35,9 +38,10 @@ Grok Bot、Cursor 和 Codex 的额度与重置时间。它不是 xAI、Cursor �
 - 读取 Grok 的 `auth.json`；过期时可能通过 OIDC 刷新并原子写回 token；
 - 以只读方式打开 Cursor 的 `state.vscdb`；
 - 只访问配置的 Grok OIDC issuer、`cli-chat-proxy.grok.com`、
-  `api2.cursor.sh`，以及 ChatGPT 登录 Codex 时的 OpenAI 额度接口；
+  `api2.cursor.sh`、ChatGPT 登录 Codex 时的 OpenAI 额度接口，以及
+  （若打开更新检查）本仓库的 GitHub Releases API 与官方 zip / SHA256；
 - 不上传源码、项目文件、聊天或提示词；
-- 没有遥测、广告或自动更新。
+- 没有遥测或广告。更新检查可关闭；安装必须手动点「下载并安装」。
 
 本地额度快照可能包含 Cursor 邮箱、套餐和错误信息，应视为私人数据。
 完整说明见 [SECURITY.md](../SECURITY.md)。

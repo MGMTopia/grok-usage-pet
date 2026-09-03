@@ -34,6 +34,7 @@ network, or read real Grok/Cursor credentials.
 - `skin_catalog.py`: theme discovery and validation
 - `docs/THEMING.md`: data-driven skin theme tokens and compatibility rules
 - `pet_view_model.py`: pure UI quota mapping
+- `app_update.py`: GitHub Release check and verified portable update
 - `tests/`: offline unit and smoke tests
 
 Keep credential access inside the provider layer. New tests must use temporary

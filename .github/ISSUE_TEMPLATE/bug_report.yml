@@ -13,7 +13,8 @@ body:
     attributes:
       label: Version
       options:
-        - 0.3.3
+        - 0.3.8
+        - 0.3.7
         - Older release
         - Source build
     validations:
@@ -35,6 +36,7 @@ body:
         - Codex
         - Pet UI / animation
         - Startup / watcher
+        - Update / GitHub
         - Packaging / installation
         - Other
     validations:

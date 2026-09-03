@@ -14,6 +14,7 @@ import sys
 import threading
 import time
 import tkinter as tk
+import webbrowser
 from pathlib import Path
 from tkinter import Menu
 from tkinter import font as tkfont
@@ -26,6 +27,7 @@ else:
 import fetch_usage as fu
 import cursor_hooks
 import skin_catalog
+import app_update
 from app_version import APP_VERSION
 from pet_view_model import (
     POOL_META,
@@ -1094,6 +1096,10 @@ class UsagePet:
         self.pinned = True if self._preview_mode else False
         self.skin_id = activate_skin(str(load_state().get("skin") or DEFAULT_SKIN_ID))
         self.enabled = load_enabled()
+        self.check_updates = bool(load_state().get("check_updates", True))
+        self._update_info: app_update.LatestRelease | None = None
+        self._update_busy = False
+        self._update_results: queue.Queue = queue.Queue()
         self._settings: tk.Toplevel | None = None
         self._drag = None
         self._drag_dx = 0
@@ -1185,6 +1191,9 @@ class UsagePet:
         self.root.deiconify()
         self.root.geometry(self._geom)
         self.root.after(100, self._poll_fetch_results)
+        self.root.after(100, self._poll_update_results)
+        if not self._preview_mode:
+            self.root.after(12_000, self._auto_check_update)
         if self._preview_mode:
             if auto_close_ms is not None:
                 self.root.after(max(500, auto_close_ms), self.quit)
@@ -1424,11 +1433,12 @@ class UsagePet:
             "y": y,
             "enabled": dict(self.enabled),
             "skin": self.skin_id,
+            "check_updates": self.check_updates,
         }
         try:
             save_state(payload)
         except tk.TclError:
-            save_state({"enabled": dict(self.enabled), "skin": self.skin_id})
+            save_state({"enabled": dict(self.enabled), "skin": self.skin_id, "check_updates": self.check_updates})
 
     def _remainings(self) -> list[float]:
         if not self.snap:
@@ -1729,6 +1739,53 @@ class UsagePet:
         add_switch(inner, "随 Cursor 启动", self._cursor_start_var, self._on_toggle_cursor_start)
         hint("打开 Grok 或 Cursor 后几秒内出现。登录 Windows 后会在后台等待这两个软件。")
 
+        heading("更新")
+        inner = card()
+        self._check_updates_var = tk.BooleanVar(value=self.check_updates)
+        add_switch(inner, "启动后检查 GitHub 新版本", self._check_updates_var, self._on_toggle_check_updates)
+        self._update_status = tk.Label(
+            inner,
+            text=self._update_status_text(),
+            bg=card_bg,
+            fg=ui["settings_muted"],
+            font=ui["font"],
+            wraplength=260,
+            justify="left",
+            anchor="w",
+        )
+        self._update_status.pack(fill="x", pady=(4, 4))
+        tk.Button(
+            inner,
+            text="现在检查",
+            command=lambda: self._check_update_now(manual=True),
+            bg=card_bg,
+            fg=ui["settings_text"],
+            font=ui["font_ui"],
+            activebackground=ui.get("settings_select", card_bg),
+            activeforeground=ui["settings_text"],
+            relief="flat",
+            bd=0,
+            highlightthickness=0,
+            cursor="hand2",
+            anchor="w",
+        ).pack(fill="x", pady=2)
+        tk.Button(
+            inner,
+            text="下载并安装",
+            command=self._apply_update,
+            bg=card_bg,
+            fg=ui["settings_text"],
+            font=ui["font_ui"],
+            activebackground=ui.get("settings_select", card_bg),
+            activeforeground=ui["settings_text"],
+            relief="flat",
+            bd=0,
+            highlightthickness=0,
+            cursor="hand2",
+            anchor="w",
+        ).pack(fill="x", pady=2)
+        hint("只从 GitHub Release 下载官方 zip，校验 SHA256 后才会替换。不会静默安装。源码运行只能打开网页，不会改源码目录。")
+
         heading("卸载")
         inner = card()
         tk.Button(
@@ -1775,6 +1832,10 @@ class UsagePet:
             return
         self._grok_start_var.set(grok_autostart_on())
         self._cursor_start_var.set(cursor_autostart_on())
+        if hasattr(self, "_check_updates_var"):
+            self._check_updates_var.set(self.check_updates)
+        if hasattr(self, "_update_status"):
+            self._update_status.configure(text=self._update_status_text())
         if hasattr(self, "_skin_var"):
             self._skin_var.set(self.skin_id)
         for key, var in self._enabled_vars.items():
@@ -1854,16 +1915,174 @@ class UsagePet:
         self._cursor_start_var.set(cursor_autostart_on())
         sync_watcher()
 
-    def quit(self, *, keep_data: bool = True) -> None:
+    def _update_status_text(self) -> str:
+        if self._update_busy:
+            return "正在检查或下载…"
+        info = self._update_info
+        if info is None:
+            return f"当前 v{APP_VERSION}。有新版本时会提示，需手动安装。"
+        if app_update.is_newer(info.version):
+            extra = "可下载安装。" if app_update.can_apply_inplace() else "请打开发布页自行下载。"
+            return f"发现 v{info.version}。{extra}"
+        return f"已是最新 v{APP_VERSION}。"
+
+    def _refresh_update_status(self) -> None:
+        if getattr(self, "_update_status", None) is not None:
+            try:
+                if self._update_status.winfo_exists():
+                    self._update_status.configure(text=self._update_status_text())
+            except tk.TclError:
+                pass
+
+    def _on_toggle_check_updates(self) -> None:
+        self._note_activity()
+        self.check_updates = bool(self._check_updates_var.get())
+        self.persist()
+
+    def _auto_check_update(self) -> None:
+        if self._closing or not self.check_updates:
+            return
+        last = load_state().get("last_update_check")
+        try:
+            last_ts = float(last)
+        except (TypeError, ValueError):
+            last_ts = 0.0
+        if time.time() - last_ts < app_update.CHECK_INTERVAL_S:
+            return
+        self._check_update_now(manual=False)
+
+    def _check_update_now(self, *, manual: bool) -> None:
+        if self._update_busy or self._closing:
+            return
+        self._update_busy = True
+        self._refresh_update_status()
+
+        def work() -> None:
+            try:
+                release = app_update.fetch_latest_release()
+                self._update_results.put(("checked", release, manual, ""))
+            except Exception as exc:
+                self._update_results.put(("checked", None, manual, str(exc)))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _apply_update(self) -> None:
+        if self._update_busy or self._closing:
+            return
+        info = self._update_info
+        if info is None or not app_update.is_newer(info.version):
+            self._toast("请先检查更新。")
+            return
+        if not app_update.can_apply_inplace():
+            self._open_release_page(info)
+            self._toast("源码运行不会改文件。已打开 GitHub 发布页。")
+            return
+        self._update_busy = True
+        self._refresh_update_status()
+        release = info
+
+        def work() -> None:
+            try:
+                work_dir = DATA_DIR / "update-staging"
+                payload = app_update.download_verified_payload(release, work_dir)
+                self._update_results.put(("ready", payload, True, ""))
+            except Exception as exc:
+                self._update_results.put(("ready", None, True, str(exc)))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _open_release_page(self, info: app_update.LatestRelease | None) -> None:
+        url = app_update.HTML_RELEASE_PREFIX + "latest"
+        if info is not None and app_update.allowed_html_url(info.html_url):
+            url = info.html_url
+        webbrowser.open(url)
+
+    def _poll_update_results(self) -> None:
+        if self._closing:
+            return
+        try:
+            while True:
+                kind, payload, manual, err = self._update_results.get_nowait()
+                self._apply_update_result(kind, payload, manual, err)
+        except queue.Empty:
+            pass
+        self.root.after(100, self._poll_update_results)
+
+    def _apply_update_result(self, kind: str, payload, manual: bool, err: str) -> None:
+        self._update_busy = False
+        if kind == "checked":
+            if err:
+                self._refresh_update_status()
+                if manual:
+                    self._toast(f"检查失败：{err}")
+                return
+            save_state({"last_update_check": time.time()})
+            info = payload
+            self._update_info = info
+            self._refresh_update_status()
+            if info is not None and app_update.is_newer(info.version):
+                if manual:
+                    self._open_release_page(info)
+                self._toast(f"有新版本 v{info.version}。")
+            elif manual:
+                self._toast(f"已是最新 v{APP_VERSION}。")
+            return
+        if err:
+            self._refresh_update_status()
+            if kind == "launched":
+                self._toast(f"无法开始安装：{err}")
+            else:
+                self._toast(f"下载失败：{err}")
+            return
+        if kind == "ready":
+            self._update_busy = True
+            self._refresh_update_status()
+            prepared = payload
+
+            def launch() -> None:
+                restart_watcher = grok_autostart_on() or cursor_autostart_on()
+                try:
+                    stop_app_processes()
+                    app_update.launch_apply(
+                        prepared,
+                        fu.install_dir(),
+                        os.getpid(),
+                        restart_watcher=restart_watcher,
+                    )
+                except Exception as exc:
+                    try:
+                        app_update.discard_prepared_update(prepared)
+                    except Exception:
+                        pass
+                    if restart_watcher:
+                        try:
+                            sync_watcher()
+                        except Exception:
+                            pass
+                    self._update_results.put(("launched", None, True, str(exc)))
+                    return
+                self._update_results.put(("launched", None, True, ""))
+
+            threading.Thread(target=launch, daemon=True).start()
+            return
+        if kind != "launched":
+            self._refresh_update_status()
+            self._toast("更新状态无效。")
+            return
+        self._toast("将退出并安装新版本。")
+        self.root.after(400, lambda: self.quit(mark_dismissed=False))
+
+    def quit(self, *, keep_data: bool = True, mark_dismissed: bool = True) -> None:
         self._closing = True
         if keep_data and not self._preview_mode:
             self.persist()
-            try:
-                import watch_apps
+            if mark_dismissed:
+                try:
+                    import watch_apps
 
-                watch_apps.mark_dismissed()
-            except Exception:
-                pass
+                    watch_apps.mark_dismissed()
+                except Exception:
+                    pass
         try:
             if LOCK_FILE.exists() and LOCK_FILE.read_text(encoding="utf-8").strip() == str(os.getpid()):
                 LOCK_FILE.unlink()

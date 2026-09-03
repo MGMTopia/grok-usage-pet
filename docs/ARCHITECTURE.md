@@ -38,3 +38,16 @@ optional. Core startup must remain functional when the fan theme is absent.
 The app can create Windows scheduled tasks and a managed Cursor `sessionStart`
 hook. These integrations use stable ownership markers so disabling the feature
 does not remove third-party configuration.
+
+## Optional updates
+
+`app_update.py` can query this repository's GitHub Latest Release. Installing
+replaces only a frozen `GrokUsagePet.exe` tree after HTTPS, immutable-release
+metadata, asset digest, SHA256, bounded extraction, and zip-layout checks. The
+complete new tree is copied to a sibling directory and smoke-tested. The current
+app exits only after the detached helper emits a preflight readiness signal; the
+old directory is then renamed, and failures roll back to and restart the previous
+tree. An enabled watcher is restored if preflight fails and re-registered after
+the switch. The helper removes its readiness file and script. Source checkouts
+open the release page and do not rewrite the working tree. There is no silent
+replacement.

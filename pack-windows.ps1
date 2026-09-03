@@ -54,7 +54,7 @@ if mismatches:
     raise SystemExit("build dependency mismatch: " + "; ".join(mismatches))
 print("locked build dependencies OK: " + ", ".join(f"{name} {version}" for name, version in pins.items()))
 '@
-& $PythonExe -c $dependencyCheckCode (Join-Path $PSScriptRoot "requirements-build.lock")
+$dependencyCheckCode | & $PythonExe - (Join-Path $PSScriptRoot "requirements-build.lock")
 if ($LASTEXITCODE -ne 0) {
     throw "Build dependencies do not match the release lock. Run: $PythonExe -m pip install --require-hashes -r requirements-build.lock"
 }
@@ -102,9 +102,9 @@ if not candidates:
     raise SystemExit(f"license file not found for {sys.argv[1]}")
 print(dist.locate_file(candidates[0]))
 '@
-$pillowLicense = (& $PythonExe -c $packageLicenseCode "Pillow").Trim()
+$pillowLicense = ($packageLicenseCode | & $PythonExe - "Pillow").Trim()
 if ($LASTEXITCODE -ne 0 -or -not $pillowLicense) { throw "could not locate Pillow license" }
-$pyInstallerLicense = (& $PythonExe -c $packageLicenseCode "PyInstaller").Trim()
+$pyInstallerLicense = ($packageLicenseCode | & $PythonExe - "PyInstaller").Trim()
 if ($LASTEXITCODE -ne 0 -or -not $pyInstallerLicense) { throw "could not locate PyInstaller license" }
 $tclTkLicense = Get-ChildItem -LiteralPath (Join-Path $pythonRoot "tcl") -Filter "license.terms" -Recurse -File | Select-Object -First 1
 if (-not (Test-Path $pythonLicense)) { throw "could not locate Python license" }

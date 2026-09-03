@@ -34,6 +34,8 @@ class BuildConfigTests(unittest.TestCase):
         self.assertIn("secretPatterns", script)
         self.assertIn("build dependency mismatch", script)
         self.assertIn("--require-hashes -r requirements-build.lock", script)
+        self.assertIn('$dependencyCheckCode | & $PythonExe -', script)
+        self.assertIn('$packageLicenseCode | & $PythonExe -', script)
 
     def test_dependency_files_cover_runtime_and_builder(self) -> None:
         runtime = (ROOT / "requirements.txt").read_text(encoding="utf-8")
@@ -52,10 +54,18 @@ class BuildConfigTests(unittest.TestCase):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
         instructions = (ROOT / "使用说明.txt").read_text(encoding="utf-8")
+        usage = (ROOT / "docs" / "USAGE.zh-CN.md").read_text(encoding="utf-8")
         for content in (version_module, readme, changelog, instructions):
             self.assertIn(version, content)
         self.assertIn("0.1.0", changelog)
+        self.assertIn(f"## {version}", changelog)
         self.assertIn(f"v{version}", readme)
+        self.assertIn(f"GrokUsagePet-v{version}-Windows-x64", readme)
+        self.assertIn(f"GrokUsagePet-v{version}-Windows-x64", instructions)
+        self.assertIn("启动后检查 GitHub 新版本", instructions)
+        self.assertIn("启动后检查 GitHub 新版本", usage)
+        self.assertNotIn("没有遥测、广告或自动更新", usage)
+        self.assertIn("app_update", (ROOT / "GrokUsagePet.spec").read_text(encoding="utf-8"))
 
     def test_code_and_asset_licenses_are_separate(self) -> None:
         license_text = (ROOT / "LICENSE").read_text(encoding="utf-8")

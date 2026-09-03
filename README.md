@@ -1,6 +1,6 @@
 # Grok 额度宠物
 
-Current release: **0.3.7** (`v0.3.7`).
+Current release: **0.3.8** (`v0.3.8`).
 
 Unofficial desktop pet for SuperGrok weekly, Grok Bot weekly, Cursor monthly pools, and locally signed-in Codex quota windows. Not an xAI, Cursor, or OpenAI product. Program code is MIT licensed; character assets have separate terms in [ASSETS_NOTICE.md](ASSETS_NOTICE.md).
 
@@ -47,7 +47,7 @@ The preview renders fixed sample quotas and exits after three seconds without sa
 
 | Zip | What |
 |-----|------|
-| `GrokUsagePet-v0.3.7-Windows-x64.zip` | Current release (`GrokUsagePet.exe`). Rebuild with `pack-windows.ps1`. |
+| `GrokUsagePet-v0.3.8-Windows-x64.zip` | Current release (`GrokUsagePet.exe`). Rebuild with `pack-windows.ps1`. |
 | `GrokUsagePet-kawaii.zip` | Legacy v0.2.0 compatibility archive; not the current release. |
 
 Do not copy `auth.json`, Cursor `state.vscdb`, or `pet_state.json` into a zip.
@@ -68,6 +68,7 @@ Do not copy `auth.json`, Cursor `state.vscdb`, or `pet_state.json` into a zip.
 - `cursor_hooks.py` — safe shared Cursor hook management
 - `skin_catalog.py` — skin discovery and manifest defaults
 - `pet_view_model.py` — pure UI quota mapping
+- `app_update.py` — GitHub Release check and verified zip install
 - `tests/` — offline unit and smoke tests
 - `skins/megumi-kato/` — complete example skin
 - `skins/original/` — complete default Original/Pip skin
