@@ -14,28 +14,37 @@ from unittest import mock
 import app_update as upd
 
 
+def _github_release_url(kind: str, version: str, filename: str = "") -> str:
+    base = f"https://github.com/{upd.GITHUB_OWNER}/{upd.GITHUB_REPO}/releases"
+    if kind == "tag":
+        return f"{base}/tag/v{version}"
+    return f"{base}/download/v{version}/{filename}"
+
+
 def _release_payload(version: str = "0.3.8") -> dict:
     return {
         "tag_name": f"v{version}",
         "draft": False,
         "prerelease": False,
         "immutable": True,
-        "html_url": f"https://github.com/liruilong0805/grok-usage-pet/releases/tag/v{version}",
+        "html_url": _github_release_url("tag", version),
         "assets": [
             {
                 "name": f"GrokUsagePet-v{version}-Windows-x64.zip",
-                "browser_download_url": (
-                    f"https://github.com/liruilong0805/grok-usage-pet/releases/download/"
-                    f"v{version}/GrokUsagePet-v{version}-Windows-x64.zip"
+                "browser_download_url": _github_release_url(
+                    "download",
+                    version,
+                    f"GrokUsagePet-v{version}-Windows-x64.zip",
                 ),
                 "size": 12,
                 "digest": "sha256:" + "a" * 64,
             },
             {
                 "name": f"GrokUsagePet-v{version}-Windows-x64.zip.sha256",
-                "browser_download_url": (
-                    f"https://github.com/liruilong0805/grok-usage-pet/releases/download/"
-                    f"v{version}/GrokUsagePet-v{version}-Windows-x64.zip.sha256"
+                "browser_download_url": _github_release_url(
+                    "download",
+                    version,
+                    f"GrokUsagePet-v{version}-Windows-x64.zip.sha256",
                 ),
                 "size": 80,
                 "digest": "sha256:" + "b" * 64,
@@ -55,9 +64,10 @@ class AppUpdateTests(unittest.TestCase):
         self.assertTrue(upd.allowed_api_url(upd.LATEST_URL))
         self.assertFalse(upd.allowed_api_url("https://evil.example/releases/latest"))
         self.assertFalse(upd.allowed_api_url(upd.LATEST_URL + "?page=1"))
-        zip_url = (
-            "https://github.com/liruilong0805/grok-usage-pet/releases/download/"
-            "v0.3.8/GrokUsagePet-v0.3.8-Windows-x64.zip"
+        zip_url = _github_release_url(
+            "download",
+            "0.3.8",
+            "GrokUsagePet-v0.3.8-Windows-x64.zip",
         )
         self.assertTrue(upd.allowed_download_url(zip_url))
         self.assertFalse(
@@ -91,9 +101,10 @@ class AppUpdateTests(unittest.TestCase):
 
         with mock.patch.object(upd, "_opener", return_value=Opener()):
             upd._get_bytes(upd.LATEST_URL, limit=100)
-            asset_url = (
-                "https://github.com/liruilong0805/grok-usage-pet/releases/download/"
-                "v0.3.8/GrokUsagePet-v0.3.8-Windows-x64.zip.sha256"
+            asset_url = _github_release_url(
+                "download",
+                "0.3.8",
+                "GrokUsagePet-v0.3.8-Windows-x64.zip.sha256",
             )
             upd._get_bytes(asset_url, limit=100)
 
@@ -297,7 +308,7 @@ class AppUpdateTests(unittest.TestCase):
         release = upd.LatestRelease(
             version=version,
             tag=f"v{version}",
-            html_url=f"https://github.com/liruilong0805/grok-usage-pet/releases/tag/v{version}",
+            html_url=_github_release_url("tag", version),
             zip_asset=upd.ReleaseAsset(zip_name, "zip-url", len(zip_bytes), zip_digest),
             sha_asset=upd.ReleaseAsset(
                 f"{zip_name}.sha256",

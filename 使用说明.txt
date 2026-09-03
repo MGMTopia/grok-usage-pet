@@ -78,8 +78,8 @@ Grok CLI 或 Cursor 至少登录过其中一个，对应额度才能显示。
 
 反馈与建议
 ----------
-- 故障和功能建议：https://github.com/liruilong0805/grok-usage-pet/issues/new/choose
-- 问答、主题想法与投票：https://github.com/liruilong0805/grok-usage-pet/discussions
+- 故障和功能建议：打开本仓库 GitHub 页面的 Issues
+- 问答、主题想法与投票：打开本仓库的 Discussions
 - 安全问题请使用 GitHub 私密漏洞报告，不要发布到公开 Issue。
 
 提交前请删除邮箱、访问令牌、auth.json、state.vscdb、额度快照、私人路径和完整日志。

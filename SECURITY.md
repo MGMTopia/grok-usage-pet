@@ -43,9 +43,9 @@ Quota retrieval contacts only:
 - `https://auth.openai.com` to refresh a ChatGPT-login Codex session;
 - `https://chatgpt.com/backend-api/wham/usage` for Codex 5-hour and weekly
   remaining percentages;
-- `https://api.github.com/repos/liruilong0805/grok-usage-pet/releases/latest`
-  when update checks are enabled, plus GitHub download hosts for the versioned
-  Windows zip and `.sha256` files after the user chooses to install.
+- this repository's GitHub Releases latest API when update checks are enabled,
+  plus GitHub download hosts for the versioned Windows zip and `.sha256` files
+  after the user chooses to install.
 
 The OIDC token endpoint is discovered dynamically from the configured issuer,
 so it is not necessarily a single fixed URL.
@@ -105,6 +105,6 @@ helper files are removed on completion or failure.
 ## Reporting a vulnerability
 
 Do not open a public issue containing credentials, database contents, logs, or
-private paths. Use the repository's
-[private vulnerability report](https://github.com/liruilong0805/grok-usage-pet/security/advisories/new)
+private paths. Use this repository's **Security → Advisories → New advisory**
+form on GitHub
 and send only a minimal reproduction with all secrets and personal data removed.
