@@ -70,6 +70,7 @@ _SENSITIVE_TEXT_PATTERNS = (
     ),
     re.compile(r"\b(?:sk-[A-Za-z0-9_-]{12,}|gh[pousr]_[A-Za-z0-9_]{12,})\b", re.IGNORECASE),
     re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b"),
+    re.compile(r"(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b"),
 )
 
 
@@ -82,6 +83,13 @@ def redact_sensitive_text(value: object, *, limit: int = 500) -> str:
     if len(text) > limit:
         text = text[: max(0, limit - 1)] + "…"
     return text
+
+
+def bounded_service_text(value: object, *, limit: int = 240) -> str | None:
+    """Return one bounded, redacted service label or None for non-text values."""
+    if not isinstance(value, str):
+        return None
+    return redact_sensitive_text(value, limit=limit)
 
 
 class AuthFileChangedError(RuntimeError):
@@ -475,7 +483,7 @@ def fetch_cursor() -> dict | None:
 
     return {
         "source_status": SOURCE_OK if usable else SOURCE_ERROR,
-        "cursor_plan": plan_info.get("planName") or creds.get("plan"),
+        "cursor_plan": bounded_service_text(plan_info.get("planName") or creds.get("plan"), limit=120),
         "grok_bot": {
             "used_percent": used,
             "remaining_percent": bot_remaining,
@@ -485,19 +493,19 @@ def fetch_cursor() -> dict | None:
             "billing_cycle_end": ms_to_iso(period.get("billingCycleEnd")),
             "included_limit_cents": limit_cents,
             "included_used_cents": included_cents,
-            "display_message": period.get("displayMessage"),
+            "display_message": bounded_service_text(period.get("displayMessage")),
             "on_demand_allowed": not bool(hard.get("noUsageBasedAllowed")),
             "cursor_models": {
                 "hint": "Composer / Cursor Grok 等自有模型",
                 "used_percent": models_used,
                 "remaining_percent": cursor_remaining,
-                "display_message": period.get("autoModelSelectedDisplayMessage"),
+                "display_message": bounded_service_text(period.get("autoModelSelectedDisplayMessage")),
             },
             "other_models": {
                 "hint": "GPT / Claude 等第三方模型",
                 "used_percent": other_used,
                 "remaining_percent": other_remaining,
-                "display_message": period.get("namedModelSelectedDisplayMessage"),
+                "display_message": bounded_service_text(period.get("namedModelSelectedDisplayMessage")),
             },
         },
         "errors": errors or None,

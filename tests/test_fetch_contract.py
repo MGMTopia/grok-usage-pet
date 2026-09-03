@@ -145,6 +145,13 @@ class SnapshotContractTests(unittest.TestCase):
         self.assertNotIn("\n", rendered)
         self.assertIn("[redacted]", rendered)
 
+    def test_service_text_is_bounded_and_redacts_email(self) -> None:
+        rendered = fu.bounded_service_text("contact person@example.com " + ("x" * 500), limit=80)
+        self.assertIsNotNone(rendered)
+        self.assertNotIn("person@example.com", rendered)
+        self.assertLessEqual(len(rendered), 80)
+        self.assertIsNone(fu.bounded_service_text({"unexpected": "shape"}))
+
     def test_provider_failures_do_not_copy_tokens_into_snapshot(self) -> None:
         canary = "opaque-provider-token-canary"
         with (

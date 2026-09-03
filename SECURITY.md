@@ -60,7 +60,7 @@ The app stores UI state, logs, and the last usable quota snapshot under
 `%LOCALAPPDATA%\GrokUsagePet`. On first v0.3 run it copies state and snapshots
 from the historical `%LOCALAPPDATA%\GrokUsagePetKawaii` directory only when the
 new destination file does not already exist. A quota snapshot can contain
-Cursor email, plan/status metadata, reset times, and service error details.
+Cursor plan labels, reset times, bounded service display messages, and error details.
 Treat these files as private local data. Command-line refreshes report only
 whether the local snapshot was updated; they do not print authenticated quota
 values or provider error details to stdout/stderr. The plain-text summary also

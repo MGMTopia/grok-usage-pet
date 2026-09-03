@@ -339,10 +339,17 @@ class ProcessCleanupTests(unittest.TestCase):
         prelude = r"""
 function Get-ScheduledTask {
     param($TaskPath, $TaskName, $ErrorAction)
-    [pscustomobject]@{ Actions = @([pscustomobject]@{
+    $actions = @([pscustomobject]@{
         Execute = $env:TEST_TASK_EXECUTE
         Arguments = $env:TEST_TASK_ARGUMENTS
-    }) }
+    })
+    if ($env:TEST_TASK_SECOND_EXECUTE) {
+        $actions += [pscustomobject]@{
+            Execute = $env:TEST_TASK_SECOND_EXECUTE
+            Arguments = $env:TEST_TASK_SECOND_ARGUMENTS
+        }
+    }
+    [pscustomobject]@{ Actions = $actions }
 }
 function Stop-ScheduledTask { param($TaskName, $ErrorAction) }
 function Unregister-ScheduledTask { param($TaskPath, $TaskName, $Confirm, $ErrorAction) }
@@ -350,12 +357,19 @@ function Unregister-ScheduledTask { param($TaskPath, $TaskName, $Confirm, $Error
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp).resolve()
             cases = (
-                (root / "GrokUsagePet.exe", "", True),
-                (root.parent / "Other" / "GrokUsagePet.exe", "", False),
-                (Path(r"C:\Python\pythonw.exe"), f'"{root / "pet.py"}"', True),
-                (Path(r"C:\Python\pythonw.exe"), f'"{root.parent / "Other" / "pet.py"}"', False),
+                (root / "GrokUsagePet.exe", "", "", "", True),
+                (root.parent / "Other" / "GrokUsagePet.exe", "", "", "", False),
+                (Path(r"C:\Python\pythonw.exe"), f'"{root / "pet.py"}"', "", "", True),
+                (Path(r"C:\Python\pythonw.exe"), f'"{root.parent / "Other" / "pet.py"}"', "", "", False),
+                (
+                    root / "GrokUsagePet.exe",
+                    "",
+                    root.parent / "Other" / "GrokUsagePet.exe",
+                    "",
+                    False,
+                ),
             )
-            for execute, arguments, owned in cases:
+            for execute, arguments, second_execute, second_arguments, owned in cases:
                 with self.subTest(execute=execute, arguments=arguments):
                     env = os.environ.copy()
                     env.update(
@@ -364,6 +378,8 @@ function Unregister-ScheduledTask { param($TaskPath, $TaskName, $Confirm, $Error
                             "GROK_USAGE_PET_TASK_NAMES": "GrokUsagePetLaunch",
                             "TEST_TASK_EXECUTE": str(execute),
                             "TEST_TASK_ARGUMENTS": arguments,
+                            "TEST_TASK_SECOND_EXECUTE": str(second_execute),
+                            "TEST_TASK_SECOND_ARGUMENTS": second_arguments,
                         }
                     )
                     ran = subprocess.run(

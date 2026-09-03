@@ -895,27 +895,36 @@ foreach ($name in $taskNames) {
     try {
         $task = Get-ScheduledTask -TaskPath '\' -TaskName $name -ErrorAction SilentlyContinue
         if (-not $task) { continue }
-        $owned = $false
+        $owned = $true
+        $seenAction = $false
         foreach ($action in $task.Actions) {
+            $seenAction = $true
+            $actionOwned = $false
             $raw = [Environment]::ExpandEnvironmentVariables([string]$action.Execute).Trim('"')
             $rawArgs = [Environment]::ExpandEnvironmentVariables([string]$action.Arguments).Trim()
-            if (-not [IO.Path]::IsPathRooted($raw)) { continue }
+            if (-not [IO.Path]::IsPathRooted($raw)) {
+                $owned = $false
+                break
+            }
             $candidate = [IO.Path]::GetFullPath($raw)
             if (($productNames -icontains [IO.Path]::GetFileName($candidate)) -and
                 ([IO.Path]::GetDirectoryName($candidate) -ieq $installRoot)) {
-                $owned = $true
-                break
+                $actionOwned = $true
             }
-            if ($pythonNames -icontains [IO.Path]::GetFileName($candidate)) {
+            if ((-not $actionOwned) -and ($pythonNames -icontains [IO.Path]::GetFileName($candidate))) {
                 foreach ($sourceScript in $sourceScripts) {
                     if (($rawArgs -ieq $sourceScript) -or ($rawArgs -ieq ('"' + $sourceScript + '"'))) {
-                        $owned = $true
+                        $actionOwned = $true
                         break
                     }
                 }
-                if ($owned) { break }
+            }
+            if (-not $actionOwned) {
+                $owned = $false
+                break
             }
         }
+        if (-not $seenAction) { $owned = $false }
         if (-not $owned) { continue }
         if ($name -like '*Watch') {
             Stop-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
