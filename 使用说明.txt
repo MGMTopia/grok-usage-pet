@@ -1,7 +1,7 @@
 Grok Usage Pet
 ==============
 
-版本：0.3.9（GitHub 标签 v0.3.9）
+版本：0.3.10（GitHub 标签 v0.3.10）
 
 看 SuperGrok 周额度、Grok Bot 周额度、Cursor 两个月额度池，以及 Codex（一条上深色 5 小时 / 浅色周额度）的透明桌宠。
 不是 xAI / Cursor / OpenAI 官方软件。账单接口以后可能会变。
@@ -11,7 +11,7 @@ Grok Usage Pet
 
 即插即用
 --------
-1. 解压整个「GrokUsagePet-v0.3.9-Windows-x64」文件夹，不要只拷贝 exe。
+1. 解压整个「GrokUsagePet-v0.3.10-Windows-x64」文件夹，不要只拷贝 exe。
 2. 本机先登录一次（登哪个就显示哪条；不必一直开着软件）：
    - SuperGrok：安装 Grok CLI 后运行  grok login
    - Grok Bot 和 Cursor 额度：打开 Cursor 并登录

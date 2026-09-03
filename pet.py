@@ -1629,15 +1629,19 @@ class UsagePet:
             return self._anim if self._anim in ("running-left", "running-right") else "idle"
         if self._oneshot and self._oneshot in self._anims:
             return self._oneshot
+        # Pointer interaction is an explicit user action. Keep it ahead of the
+        # ambient waiting/running/review states; otherwise a fresh machine with
+        # no snapshot yet, an in-flight refresh, or an open quota bubble can
+        # calculate a look target but never display any of the 16 look frames.
+        self._look_target = self._look_index()
+        if self._look_target is not None:
+            return "look"
         if self.snap is None and "waiting" in self._anims:
             return "waiting"
         if self._busy and "running" in self._anims:
             return "running"
         if self.bars_visible() and "review" in self._anims:
             return "review"
-        self._look_target = self._look_index()
-        if self._look_target is not None:
-            return "look"
         if "idle" in self._anims:
             return "idle"
         return self.mood()
