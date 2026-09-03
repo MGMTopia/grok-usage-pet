@@ -74,8 +74,11 @@ Settings → 卸载, or `pet.py --uninstall` / `GrokUsagePet.exe --uninstall`,
 removes those autostart hooks, the GrokUsagePet scheduled tasks (including the
 legacy kawaii names), any running pet or watcher instances, the desktop
 shortcut, and the `%LOCALAPPDATA%\GrokUsagePet` / `GrokUsagePetKawaii` data
-directories. It does not delete Grok, Cursor, or Codex login files, and it does
-not delete the program folder.
+directories. It never deletes Grok, Cursor, or Codex login files. A frozen
+portable release also deletes its own folder after exit only when the folder has
+the pack-time marker, exact release-directory format, expected executable and
+runtime, and contains no symbolic links or Windows reparse points. Source clones,
+renamed folders, and unmarked directories are never recursively deleted.
 
 ## Release safety
 

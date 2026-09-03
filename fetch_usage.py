@@ -21,6 +21,7 @@ import base64
 import hashlib
 import json
 import os
+import re
 import shutil
 import sqlite3
 import stat
@@ -61,6 +62,26 @@ CODEX_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
 WATCH_SECS = 60
 REFRESH_SKEW_SECS = 300
 _AUTH_REVISION_UNSET = object()
+_SENSITIVE_TEXT_PATTERNS = (
+    re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]{12,}"),
+    re.compile(
+        r"(?i)\b(?:access_token|refresh_token|id_token|authorization|api[_-]?key)"
+        r"\b\s*[:=]\s*['\"]?[^'\"\s,;]{8,}"
+    ),
+    re.compile(r"\b(?:sk-[A-Za-z0-9_-]{12,}|gh[pousr]_[A-Za-z0-9_]{12,})\b", re.IGNORECASE),
+    re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b"),
+)
+
+
+def redact_sensitive_text(value: object, *, limit: int = 500) -> str:
+    """Bound diagnostic text and remove common credential and URL-query shapes."""
+    text = str(value).replace("\r", " ").replace("\n", " ")
+    text = re.sub(r"(https://[^\s?]+)\?[^\s]+", r"\1?[redacted]", text, flags=re.IGNORECASE)
+    for pattern in _SENSITIVE_TEXT_PATTERNS:
+        text = pattern.sub("[redacted]", text)
+    if len(text) > limit:
+        text = text[: max(0, limit - 1)] + "…"
+    return text
 
 
 class AuthFileChangedError(RuntimeError):
@@ -418,19 +439,19 @@ def fetch_cursor() -> dict | None:
     try:
         bot = cursor_rpc(token, "GetSandUsageStatus")
     except Exception as exc:
-        errors["grok_bot"] = str(exc)
+        errors["grok_bot"] = redact_sensitive_text(exc)
     try:
         period = cursor_rpc(token, "GetCurrentPeriodUsage")
     except Exception as exc:
-        errors["cursor_period"] = str(exc)
+        errors["cursor_period"] = redact_sensitive_text(exc)
     try:
         plan = cursor_rpc(token, "GetPlanInfo")
     except Exception as exc:
-        errors["cursor_plan"] = str(exc)
+        errors["cursor_plan"] = redact_sensitive_text(exc)
     try:
         hard = cursor_rpc(token, "GetHardLimit")
     except Exception as exc:
-        errors["cursor_hard_limit"] = str(exc)
+        errors["cursor_hard_limit"] = redact_sensitive_text(exc)
 
     used = as_float(bot.get("usagePercent"))
     reset = bot.get("nextResetTimestampUtc") if bot else None
@@ -651,7 +672,7 @@ def fetch_codex() -> dict | None:
     try:
         creds = load_codex_auth()
     except RuntimeError as exc:
-        return {"source_status": SOURCE_ERROR, "errors": {"codex": str(exc)}}
+        return {"source_status": SOURCE_ERROR, "errors": {"codex": redact_sensitive_text(exc)}}
     if creds is None:
         return None
     if creds.get("mode") == "apikey":
@@ -675,7 +696,7 @@ def fetch_codex() -> dict | None:
             account_id = creds.get("account_id")
             payload = _codex_get(CODEX_USAGE_URL, access, account_id)
     except Exception as exc:
-        return {"source_status": SOURCE_ERROR, "errors": {"codex": str(exc)}}
+        return {"source_status": SOURCE_ERROR, "errors": {"codex": redact_sensitive_text(exc)}}
     rate = payload.get("rate_limit") if isinstance(payload.get("rate_limit"), dict) else {}
     primary = _codex_window(rate.get("primary_window"))
     secondary = _codex_window(rate.get("secondary_window"))
@@ -743,10 +764,10 @@ def snapshot() -> dict:
             settings = get_json(SETTINGS_URL, token)
             tier = settings.get("subscription_tier_display")
         except Exception as exc:
-            errors["grok_settings"] = str(exc)
+            errors["grok_settings"] = redact_sensitive_text(exc)
         cfg = billing.get("config") or {}
     except Exception as exc:
-        errors["grok"] = str(exc)
+        errors["grok"] = redact_sensitive_text(exc)
 
     period = cfg.get("currentPeriod") or {}
     used_pct = float(cfg.get("creditUsagePercent") or 0) if cfg else None
@@ -774,8 +795,8 @@ def snapshot() -> dict:
             if cursor_status == SOURCE_ERROR and not cursor_errors:
                 errors["cursor"] = "Cursor 接口未返回有效额度数据"
     except Exception as exc:
-        cursor = {"error": str(exc)}
-        errors["cursor"] = str(exc)
+        cursor = {"error": redact_sensitive_text(exc)}
+        errors["cursor"] = redact_sensitive_text(exc)
         cursor_status = SOURCE_ERROR
 
     codex = None
@@ -793,8 +814,8 @@ def snapshot() -> dict:
             if codex_status == SOURCE_ERROR and "codex" not in errors:
                 errors["codex"] = "Codex 接口未返回有效额度数据"
     except Exception as exc:
-        codex = {"error": str(exc)}
-        errors["codex"] = str(exc)
+        codex = {"error": redact_sensitive_text(exc)}
+        errors["codex"] = redact_sensitive_text(exc)
         codex_status = SOURCE_ERROR
 
     source_states = (grok_status, cursor_status, codex_status)
@@ -874,18 +895,18 @@ def main() -> int:
                 try:
                     fetch_once(quiet=args.quiet)
                 except Exception as exc:
-                    print(f"refresh failed: {exc}", file=sys.stderr)
+                    print(f"refresh failed: {redact_sensitive_text(exc)}", file=sys.stderr)
         return exit_code_for_snapshot(snap)
     except urllib.error.HTTPError as exc:
-        print(f"HTTP {exc.code}: {exc.reason}", file=sys.stderr)
+        print(f"HTTP {exc.code}: {redact_sensitive_text(exc.reason)}", file=sys.stderr)
         if exc.code in (401, 403):
             print("token rejected; run `grok login`", file=sys.stderr)
         return 1
     except SystemExit as exc:
-        print(exc, file=sys.stderr)
+        print(redact_sensitive_text(exc), file=sys.stderr)
         return 1
     except Exception as exc:
-        print(f"fatal: {exc}", file=sys.stderr)
+        print(f"fatal: {redact_sensitive_text(exc)}", file=sys.stderr)
         return 2
 
 

@@ -286,6 +286,10 @@ class AppUpdateTests(unittest.TestCase):
         with zipfile.ZipFile(buffer, "w") as archive:
             archive.writestr(f"{root_name}/GrokUsagePet.exe", b"exe")
             archive.writestr(f"{root_name}/_internal/runtime.txt", b"runtime")
+            archive.writestr(
+                f"{root_name}/{upd.INSTALL_MARKER_NAME}",
+                upd.INSTALL_MARKER_VALUE.encode("ascii"),
+            )
         zip_bytes = buffer.getvalue()
         zip_digest = hashlib.sha256(zip_bytes).hexdigest()
         zip_name = f"{root_name}.zip"

@@ -413,5 +413,64 @@ class PurgeResidueTests(unittest.TestCase):
                 self.assertLess(self.schtasks_calls.index(end), self.schtasks_calls.index(delete))
 
 
+@unittest.skipUnless(os.name == "nt", "portable self-delete is Windows-specific")
+class PortableSelfDeleteTests(unittest.TestCase):
+    def _install_tree(self, root: Path) -> tuple[Path, Path]:
+        install = root / "GrokUsagePet-v0.3.8-Windows-x64"
+        (install / "_internal").mkdir(parents=True)
+        exe = install / "GrokUsagePet.exe"
+        exe.write_bytes(b"not-running")
+        (install / pet.INSTALL_MARKER_NAME).write_text(
+            pet.INSTALL_MARKER_VALUE,
+            encoding="ascii",
+        )
+        return install, exe
+
+    def test_self_delete_requires_exact_marked_non_reparse_tree(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            install, exe = self._install_tree(root)
+            self.assertEqual(
+                pet.validated_self_delete_dir(install, exe, frozen=True),
+                install.resolve(),
+            )
+
+            renamed = root / "Desktop"
+            install.rename(renamed)
+            self.assertIsNone(pet.validated_self_delete_dir(renamed, renamed / exe.name, frozen=True))
+            renamed.rename(install)
+            marker = install / pet.INSTALL_MARKER_NAME
+            marker.write_text("wrong", encoding="ascii")
+            self.assertIsNone(pet.validated_self_delete_dir(install, exe, frozen=True))
+            self.assertIsNone(pet.validated_self_delete_dir(install, exe, frozen=False))
+
+    def test_self_delete_script_removes_only_validated_tree_and_itself(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "parent$`'quoted"
+            root.mkdir()
+            install, _exe = self._install_tree(root)
+            script_path = root / "uninstall.ps1"
+            script_path.write_text(
+                pet._build_self_delete_script(install, 2147483647),
+                encoding="utf-8",
+            )
+            ran = subprocess.run(
+                [
+                    "powershell.exe",
+                    "-NoProfile",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-File",
+                    str(script_path),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=20,
+            )
+            self.assertEqual(ran.returncode, 0, ran.stderr)
+            self.assertFalse(install.exists())
+            self.assertFalse(script_path.exists())
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -181,7 +181,7 @@ def main() -> None:
         except Exception as exc:
             try:
                 with log.open("a", encoding="utf-8") as fh:
-                    fh.write(f"{exc}\n")
+                    fh.write(pet.fu.redact_sensitive_text(exc) + "\n")
             except OSError:
                 pass
         time.sleep(2)

@@ -20,7 +20,7 @@ import zipfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-from app_version import APP_VERSION
+from app_version import APP_VERSION, INSTALL_MARKER_NAME, INSTALL_MARKER_VALUE
 
 GITHUB_OWNER = "liruilong0805"
 GITHUB_REPO = "grok-usage-pet"
@@ -361,6 +361,14 @@ def find_payload_dir(extracted: Path, expected_name: str | None = None) -> Path:
             raise RuntimeError("更新包结构无效")
     if not (payload / "_internal").is_dir():
         raise RuntimeError("更新包缺少运行文件")
+    if expected_name is not None:
+        marker = payload / INSTALL_MARKER_NAME
+        try:
+            marker_value = marker.read_text(encoding="ascii").strip()
+        except OSError as exc:
+            raise RuntimeError("更新包缺少安装标记") from exc
+        if marker.is_symlink() or marker_value != INSTALL_MARKER_VALUE:
+            raise RuntimeError("更新包安装标记无效")
     try:
         payload.resolve().relative_to(extracted.resolve())
     except ValueError as exc:
