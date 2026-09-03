@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.3.9 — 2026-09-03
+
+GitHub owner retarget after the account rename. Git tag: `v0.3.9`.
+
+- Point in-app update checks at `MGMTopia/grok-usage-pet`.
+- Put a Pip preview GIF and Chinese/English install steps on the GitHub README,
+  with the Release zip first so people do not have to compile.
+- 0.3.8 portable installs cannot self-update after the GitHub username change;
+  download this zip from Releases instead.
+
 ## 0.3.8 — 2026-09-03
 
 Optional GitHub update checks. Git tag: `v0.3.8`.
