@@ -112,6 +112,31 @@ class SnapshotContractTests(unittest.TestCase):
         self.assertEqual(fu.exit_code_for_snapshot(snap), 1)
         self.assertNotIn("remaining 0%", fu.one_line(snap))
 
+    def test_fetch_once_does_not_print_private_usage_data(self) -> None:
+        private = {
+            "status": fu.STATUS_COMPLETE,
+            "plan": "private-plan",
+            "remaining_percent": 42,
+            "errors": {"grok": "private-provider-error"},
+        }
+        with (
+            mock.patch.object(fu, "snapshot", return_value=private),
+            mock.patch.object(fu, "write_snapshot", return_value=True),
+            mock.patch("builtins.print") as printer,
+        ):
+            self.assertIs(fu.fetch_once(), private)
+
+        rendered = " ".join(str(arg) for call in printer.call_args_list for arg in call.args)
+        self.assertEqual(rendered, "updated local usage snapshot")
+        self.assertNotIn("private", rendered)
+
+    def test_failed_summary_omits_private_provider_errors(self) -> None:
+        snap = {
+            "status": fu.STATUS_FAILED,
+            "errors": {"grok": "private-provider-error"},
+        }
+        self.assertEqual(fu.one_line(snap), "usage unavailable")
+
     def test_both_sources_are_complete_even_if_optional_settings_fail(self) -> None:
         def get_json(url: str, _token: str) -> dict:
             if url == fu.BILLING_URL:
@@ -244,17 +269,20 @@ class CliContractTests(unittest.TestCase):
             self.assertEqual(fu.main(), 2)
 
     def test_pet_cli_uses_same_failed_exit_code(self) -> None:
-        failed = {"status": fu.STATUS_FAILED, "errors": {"grok": "offline"}}
+        failed = {"status": fu.STATUS_FAILED, "errors": {"grok": "private-provider-error"}}
         with (
             mock.patch.object(sys, "argv", ["pet.py", "--cli"]),
             mock.patch.object(pet.fu, "snapshot", return_value=failed),
             mock.patch.object(pet.fu, "write_snapshot", return_value=False),
-            mock.patch("builtins.print"),
+            mock.patch("builtins.print") as printer,
         ):
             with self.assertRaises(SystemExit) as caught:
                 pet.main()
 
         self.assertEqual(caught.exception.code, 1)
+        rendered = " ".join(str(arg) for call in printer.call_args_list for arg in call.args)
+        self.assertNotIn("private-provider-error", rendered)
+        self.assertIn("usage unavailable", rendered)
 
 
 if __name__ == "__main__":

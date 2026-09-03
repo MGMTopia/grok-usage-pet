@@ -847,13 +847,10 @@ def fetch_once(quiet: bool = False) -> dict:
     snap = snapshot()
     written = write_snapshot(snap)
     if not quiet:
-        print(one_line(snap))
         if written:
-            out_dir = data_dir()
-            print(f"wrote {out_dir / 'usage.json'}")
-            print(f"wrote {out_dir / 'usage.txt'}")
+            print("updated local usage snapshot")
         else:
-            print("kept previous snapshot", file=sys.stderr)
+            print("usage unavailable; kept previous local snapshot", file=sys.stderr)
     return snap
 
 

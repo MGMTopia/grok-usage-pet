@@ -41,10 +41,9 @@ def seconds_until(iso: str | None) -> int | None:
 
 def one_line(snap: dict) -> str:
     if snap.get("status") == STATUS_FAILED:
-        errors = snap.get("errors") or {}
-        detail = " · ".join(str(value) for value in errors.values())
-        suffix = f" | {detail}" if detail else ""
-        return f"usage unavailable{suffix}"
+        # Detailed provider errors remain in the private local JSON snapshot and
+        # must not be duplicated into the plain-text summary or console logs.
+        return "usage unavailable"
     products = snap.get("products_used_percent") or {}
     bits = [f"{key.replace('Grok', '')} {value:.0f}%" for key, value in sorted(products.items())]
     product_part = " · ".join(bits) if bits else "no product split"

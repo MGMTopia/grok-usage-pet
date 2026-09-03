@@ -28,9 +28,35 @@ if (-not $PythonExe) {
     }
 }
 
-& $PythonExe -c "import PIL, PyInstaller; print('Pillow', PIL.__version__, 'PyInstaller', PyInstaller.__version__)"
+$dependencyCheckCode = @'
+import importlib.metadata as metadata
+import sys
+from pathlib import Path
+
+pins = {}
+for raw in Path(sys.argv[1]).read_text(encoding="utf-8").splitlines():
+    line = raw.strip().rstrip("\\").strip()
+    if not line or line.startswith(("#", "--")) or "==" not in line:
+        continue
+    name, expected = line.split("==", 1)
+    pins[name.strip()] = expected.strip()
+
+mismatches = []
+for name, expected in pins.items():
+    try:
+        actual = metadata.version(name)
+    except metadata.PackageNotFoundError:
+        actual = "missing"
+    if actual != expected:
+        mismatches.append(f"{name}: expected {expected}, found {actual}")
+
+if mismatches:
+    raise SystemExit("build dependency mismatch: " + "; ".join(mismatches))
+print("locked build dependencies OK: " + ", ".join(f"{name} {version}" for name, version in pins.items()))
+'@
+& $PythonExe -c $dependencyCheckCode (Join-Path $PSScriptRoot "requirements-build.lock")
 if ($LASTEXITCODE -ne 0) {
-    throw "Build dependencies missing. Run: $PythonExe -m pip install -r requirements-build.txt"
+    throw "Build dependencies do not match the release lock. Run: $PythonExe -m pip install --require-hashes -r requirements-build.lock"
 }
 
 if (-not $SkipTests) {

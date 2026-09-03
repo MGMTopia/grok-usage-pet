@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## 0.3.7 — 2026-09-02
+
+Privacy and code-scanning patch. Git tag: `v0.3.7`.
+
+- Stop printing authenticated quota values and provider errors to stdout/stderr;
+  detailed snapshots remain local to the application data directory.
+- Keep provider error details out of the plain-text usage summary.
+- Refuse local release builds when installed dependencies differ from the
+  hash-locked release versions.
+- Enable GitHub CodeQL default scanning for Python and GitHub Actions.
+
 ## 0.3.6 — 2026-09-02
 
 Complete-uninstall patch. Git tag: `v0.3.6`.

@@ -21,7 +21,7 @@ class BuildConfigTests(unittest.TestCase):
         self.assertIn('PyInstaller --noconfirm --clean "GrokUsagePet.spec"', script)
         self.assertNotIn("--add-data", script)
         self.assertNotIn("--hidden-import", script)
-        self.assertIn("requirements-build.txt", script)
+        self.assertIn("requirements-build.lock", script)
         self.assertIn("--visual-smoke-test", script)
         self.assertIn("CHANGELOG.md", script)
         self.assertIn("NOTICE.md", script)
@@ -32,6 +32,8 @@ class BuildConfigTests(unittest.TestCase):
         self.assertIn("LICENSE", script)
         self.assertIn(".sha256", script)
         self.assertIn("secretPatterns", script)
+        self.assertIn("build dependency mismatch", script)
+        self.assertIn("--require-hashes -r requirements-build.lock", script)
 
     def test_dependency_files_cover_runtime_and_builder(self) -> None:
         runtime = (ROOT / "requirements.txt").read_text(encoding="utf-8")

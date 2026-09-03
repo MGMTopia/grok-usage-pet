@@ -2521,8 +2521,10 @@ def main() -> None:
         return
     if "--cli" in args:
         snap = fu.snapshot()
-        fu.write_snapshot(snap)
-        print(fu.one_line(snap))
+        if fu.write_snapshot(snap):
+            print("updated local usage snapshot")
+        else:
+            print("usage unavailable; kept previous local snapshot", file=sys.stderr)
         raise SystemExit(fu.exit_code_for_snapshot(snap))
 
     log = DATA_DIR / "pet.log"

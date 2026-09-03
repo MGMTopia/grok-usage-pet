@@ -52,7 +52,10 @@ The app stores UI state, logs, and the last usable quota snapshot under
 from the historical `%LOCALAPPDATA%\GrokUsagePetKawaii` directory only when the
 new destination file does not already exist. A quota snapshot can contain
 Cursor email, plan/status metadata, reset times, and service error details.
-Treat these files as private local data.
+Treat these files as private local data. Command-line refreshes report only
+whether the local snapshot was updated; they do not print authenticated quota
+values or provider error details to stdout/stderr. The plain-text summary also
+omits provider error details.
 
 If Cursor launch integration is enabled, the app updates
 `%USERPROFILE%\.cursor\hooks.json`. It preserves unrelated fields and removes
@@ -72,7 +75,8 @@ credential databases, quota snapshots, state files, and logs before creating
 the ZIP. Published archives include a SHA256 checksum, exact third-party
 license copies, and GitHub build-provenance attestations. Skin sprite sheets
 must be bounded WebP images; untrusted manifest dimensions and animation
-values are clamped to safe limits.
+values are clamped to safe limits. GitHub CodeQL default setup scans Python and
+GitHub Actions on protected-branch pushes and weekly.
 
 ## Reporting a vulnerability
 
