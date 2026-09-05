@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+## 0.3.11 — 2026-09-05
+
+Desktop shortcut reliability, quota-bar colors, and install FAQ. Git tag: `v0.3.11`.
+
+- Create desktop shortcuts with Windows Shell COM instead of hidden
+  PowerShell `-Command` or `-EncodedCommand`, so Chinese `.lnk` names work on
+  English code pages and portable zip users do not trip common antivirus
+  heuristics. If the desktop is blocked, write the `.lnk` next to the program
+  and tell the user how to allow the app in Windows Security.
+- Document SmartScreen, download-unblock, antivirus, blank meters, sleep-wake
+  login, and quit-vs-autostart in the Chinese and English README.
+- Color quota bars from remaining percent (`< 20` low, `< 50` mid, else ok).
+  Codex 5-hour uses that exact fill; the week layer is the same hue, slightly
+  darkened.
+
 ## 0.3.10 — 2026-09-03
 
 Mouse-direction interaction reliability fix. Git tag: `v0.3.10`.

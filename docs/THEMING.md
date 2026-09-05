@@ -32,4 +32,7 @@ Available color tokens include `bubbleFill`, `bubbleOutline`, `bubbleShadow`,
 
 Themes change colors, radius, bar/tip shape, and the decorative mark. Every
 quota row shows the same content (name, period, remaining, reset on hover).
-They do not affect quota fetching or credential access.
+Single bars use `barOk` / `barMid` / `barLow` for remaining `>= 50` / `>= 20` /
+`< 20`. The Codex 5-hour layer uses that exact fill. The week layer uses the
+same remaining bands, then darkens slightly. They do not affect quota fetching
+or credential access.

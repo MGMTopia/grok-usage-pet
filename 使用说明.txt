@@ -1,9 +1,9 @@
 Grok Usage Pet
 ==============
 
-版本：0.3.10（GitHub 标签 v0.3.10）
+版本：0.3.11（GitHub 标签 v0.3.11）
 
-看 SuperGrok 周额度、Grok Bot 周额度、Cursor 两个月额度池，以及 Codex（一条上深色 5 小时 / 浅色周额度）的透明桌宠。
+看 SuperGrok 周额度、Grok Bot 周额度、Cursor 两个月额度池，以及 Codex（一条上 5 小时同色、周额度略深）的透明桌宠。
 不是 xAI / Cursor / OpenAI 官方软件。账单接口以后可能会变。
 
 默认角色 Pip 为项目原创像素机器人。加藤惠是可选的非官方同人主题，
@@ -11,7 +11,7 @@ Grok Usage Pet
 
 即插即用
 --------
-1. 解压整个「GrokUsagePet-v0.3.10-Windows-x64」文件夹，不要只拷贝 exe。
+1. 解压整个「GrokUsagePet-v0.3.11-Windows-x64」文件夹，不要只拷贝 exe。
 2. 本机先登录一次（登哪个就显示哪条；不必一直开着软件）：
    - SuperGrok：安装 Grok CLI 后运行  grok login
    - Grok Bot 和 Cursor 额度：打开 Cursor 并登录
@@ -28,7 +28,7 @@ Grok Usage Pet
 大约每 60 秒刷新；右键「刷新额度」会立刻再抓。
 睡眠唤醒后 SuperGrok / Codex 会自行用本机 refresh token 续期，不必再开对应软件。
 若 SuperGrok 仍空白并提示登录过期，再运行一次  grok login。
-若 Codex 一条空白，请确认已 `codex login`（ChatGPT 套餐），然后在设置里打开 Codex。深色是 5 小时窗口，浅色是周额度。
+若 Codex 一条空白，请确认已 `codex login`（ChatGPT 套餐），然后在设置里打开 Codex。5 小时颜色和其他条一样（绿/黄/红），周额度是同一套颜色略深。
 本程序只读取账单，不消耗对话 token，也不会把登录文件打进压缩包或上传。
 如果只有其中一边登录，另一边空白属于正常情况。
 如果本次所有来源都抓取失败，程序会保留上一次成功额度，不会用空数据覆盖。
@@ -42,6 +42,7 @@ Grok Usage Pet
 - 拖动角色移动位置
 - 双击：固定 / 取消固定额度条
 - 右键 → 退出宠物
+- 右键 → 创建桌面快捷方式：写到当前用户桌面（含 OneDrive 桌面）
 - 快捷方式 / 设置窗口图标使用当前默认 Original 主题
 - 右键 → 设置 → 形象：可在「Original / Pip」和「Megumi Kato」之间切换
 - 右键 → 设置 → 更新：开关「启动后检查 GitHub 新版本」（默认开，约每天一次）
@@ -66,7 +67,11 @@ Grok Usage Pet
 系统需求
 --------
 Windows 10/11：解压后双击 exe，不必装 Python。
+从网上下载的 zip / exe 请先右键 → 属性 → 勾选「解除锁定」再运行。
 首次启动若被 SmartScreen 拦截，选「仍要运行」（未做代码签名）。
+若「创建桌面快捷方式」失败：Windows 安全中心 → 病毒和威胁防护 →
+勒索软件防护 / 受控文件夹访问，把 GrokUsagePet.exe 加入允许应用；
+或右键 exe → 发送到 → 桌面快捷方式。本程序不会关闭杀毒或自动加白名单。
 macOS：本 zip 不能当 .app 用。请在 Mac 上用源码运行或执行 pack-mac.sh。
 Grok CLI 或 Cursor 至少登录过其中一个，对应额度才能显示。
 

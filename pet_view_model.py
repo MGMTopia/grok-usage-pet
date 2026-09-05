@@ -9,7 +9,7 @@ POOL_META = {
     "bot": {"title": "Grok Bot", "tag": "周", "period": "周额度", "cover": "Cursor 账号独立池"},
     "cm": {"title": "Cursor 模型", "tag": "月", "period": "月额度", "cover": "Composer / Cursor 内置"},
     "om": {"title": "其他模型", "tag": "月", "period": "月额度", "cover": "GPT / Claude 等"},
-    "cx": {"title": "Codex", "tag": "5h+周", "period": "5小时 + 周额度", "cover": "深色 5小时 · 浅色 周额度"},
+    "cx": {"title": "Codex", "tag": "5h+周", "period": "5小时 + 周额度", "cover": "5小时同其它条 · 周额度略深"},
 }
 
 
@@ -48,6 +48,19 @@ def cursor_extra(monthly: dict, key: str) -> list[str]:
             pass
     lines.append("按量付费 开" if monthly.get("on_demand_allowed") else "按量付费 关")
     return [line for line in lines if line]
+
+
+def remaining_bar_level(value) -> str:
+    """Map remaining percent to bar color band.
+
+    Matches the fetch animation: remaining < 20 is low, 20–50 is mid, >= 50 is ok.
+    """
+    pct = max(0.0, min(100.0, float(value)))
+    if pct < 20:
+        return "low"
+    if pct < 50:
+        return "mid"
+    return "ok"
 
 
 def format_remaining_pct(value) -> str:
@@ -180,8 +193,8 @@ def build_pools(snap: dict | None) -> dict:
             "remaining": None,
             "reset": None,
             "layers": [
-                _codex_window_layer(codex, "primary", label="5小时", tone="dark"),
-                _codex_window_layer(codex, "secondary", label="周额度", tone="light"),
+                _codex_window_layer(codex, "primary", label="5小时", tone="light"),
+                _codex_window_layer(codex, "secondary", label="周额度", tone="dark"),
             ],
             "extra": _codex_pool_extra(codex),
         },

@@ -6,7 +6,7 @@ Grok Bot、Cursor 和 Codex 的额度与重置时间。它不是 xAI、Cursor �
 
 ## 安装
 
-1. 从 GitHub Releases 下载当前 Windows x64 ZIP（`GrokUsagePet-v0.3.9-Windows-x64.zip`）。
+1. 从 GitHub Releases 下载当前 Windows x64 ZIP（`GrokUsagePet-v0.3.11-Windows-x64.zip`）。
 2. 解压整个文件夹，不要只复制 EXE。
 3. 至少登录一个数据来源：
    - SuperGrok：通过 Grok CLI 完成登录；
@@ -15,6 +15,9 @@ Grok Bot、Cursor 和 Codex 的额度与重置时间。它不是 xAI、Cursor �
 4. 双击 `GrokUsagePet.exe`。
 
 首次运行未签名版本时，Windows SmartScreen 可能要求选择“仍要运行”。
+从网上下载的压缩包请先右键 → 属性 → 勾选“解除锁定”。程序不会关闭杀毒
+或自动添加排除项。若无法创建桌面快捷方式，可在 Windows 安全中心的受控
+文件夹访问中允许本程序，或把程序目录里生成的 `.lnk` 拖到桌面。
 
 ## 使用
 
@@ -23,7 +26,7 @@ Grok Bot、Cursor 和 Codex 的额度与重置时间。它不是 xAI、Cursor �
 - 鼠标离开：收起额度条；
 - 拖动宠物：移动位置；
 - 双击：固定或取消固定额度条（仅本次运行，重启后默认收起）；
-- 右键：刷新、设置主题或退出。
+- 右键：刷新、设置主题、创建桌面快捷方式或退出。
 - 设置 → 更新：开关「启动后检查 GitHub 新版本」（默认开，约每天一次）；
   「现在检查」立刻查询；exe 可点「下载并安装」，校验 SHA256 后替换。
   源码运行只会打开发布页，不会改源码目录。不会静默安装。

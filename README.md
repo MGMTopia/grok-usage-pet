@@ -12,9 +12,9 @@ Windows 上的非官方额度桌宠，用来看 SuperGrok 周额度、Grok Bot �
 
 ## 安装
 
-当前版本：**0.3.10**（`v0.3.10`）。
+当前版本：**0.3.11**（`v0.3.11`）。
 
-从 [GitHub Release](https://github.com/MGMTopia/grok-usage-pet/releases/latest) 下载 **`GrokUsagePet-v0.3.10-Windows-x64.zip`**。不必装 Python。
+从 [GitHub Release](https://github.com/MGMTopia/grok-usage-pet/releases/latest) 下载 **`GrokUsagePet-v0.3.11-Windows-x64.zip`**。不必装 Python。
 
 1. 解压**整个文件夹**，不要只拷贝 exe。
 2. 本机先登录一次（登哪个就显示哪条）：
@@ -23,13 +23,26 @@ Windows 上的非官方额度桌宠，用来看 SuperGrok 周额度、Grok Bot �
    - Codex：ChatGPT 套餐的 `codex login`（不要用纯 API Key）
 3. 双击 `GrokUsagePet.exe`。
 
-Windows 10/11。未签名，SmartScreen 可能要选「仍要运行」。数据在 `%LOCALAPPDATA%\GrokUsagePet`。设置 → 卸载，或 `--uninstall`，只清本机集成，不动 Grok / Cursor / Codex 登录。
+Windows 10/11。数据在 `%LOCALAPPDATA%\GrokUsagePet`。设置 → 卸载，或 `--uninstall`，只清本机集成，不动 Grok / Cursor / Codex 登录。
+
+### 常见卡住点
+
+| 你会遇到 | 怎么处理 |
+|----------|----------|
+| 双击没反应，或闪一下就退出 | 必须解压**整个文件夹**（含 `_internal`），不要只拷贝 exe。从网上下载的 zip / exe 先右键 → 属性 → 勾选「解除锁定」。 |
+| SmartScreen「Windows 已保护你的电脑」 | 未做代码签名。点「更多信息」→「仍要运行」。 |
+| 杀毒隔离 exe，或「创建桌面快捷方式」失败 | 本程序**不会**关闭杀毒或自动加白名单。在 Windows 安全中心允许 `GrokUsagePet.exe`。若受控文件夹访问挡住桌面，把程序目录里的 `.lnk` 拖到桌面，或右键 exe → 发送到 → 桌面快捷方式。 |
+| 有的额度条是空的 | 只显示已经登录过的来源。纯 API Key 的 Codex 没有剩余百分比，请用 `codex login`（ChatGPT 套餐）。 |
+| SuperGrok 睡醒后空白 | 一般会自行用本机 refresh token 续期。仍提示登录过期就再运行一次 `grok login`。 |
+| 右键退出后，Grok / Cursor 还开着，宠物不回来 | 故意的。重新启动 Grok 或 Cursor，或自己再打开宠物。 |
+| 这一次所有来源都没抓到 | 会保留上一次成功额度，不会用空数据覆盖。 |
+| macOS 打不开这个 zip | 这是 Windows 包，不是 `.app`。请在 Mac 上用源码运行或执行 `pack-mac.sh`。 |
 
 ## Install
 
 Unofficial overlay for SuperGrok weekly, Grok Bot weekly, Cursor monthly, and Codex quota. Not an xAI, Cursor, or OpenAI product.
 
-Download **`GrokUsagePet-v0.3.10-Windows-x64.zip`** from the
+Download **`GrokUsagePet-v0.3.11-Windows-x64.zip`** from the
 [latest GitHub Release](https://github.com/MGMTopia/grok-usage-pet/releases/latest).
 Python is not required.
 
@@ -37,7 +50,20 @@ Python is not required.
 2. Sign in to at least one source (`grok login`, Cursor, or ChatGPT-plan `codex login`).
 3. Double-click `GrokUsagePet.exe`.
 
-Windows 10/11. The build is unsigned, so SmartScreen may ask you to run it anyway.
+Windows 10/11.
+
+### If something looks stuck
+
+| What you see | What to do |
+|--------------|------------|
+| Double-click does nothing, or the window flashes and exits | Unzip the **whole folder** (including `_internal`). Do not copy only the exe. For a download, right-click the zip/exe → Properties → Unblock. |
+| SmartScreen: “Windows protected your PC” | The build is unsigned. Choose **More info** → **Run anyway**. |
+| Antivirus quarantines the exe, or “create desktop shortcut” fails | This app **does not** turn off antivirus or add exclusions. Allow `GrokUsagePet.exe` in Windows Security. If Controlled Folder Access blocks the desktop, drag the `.lnk` from the program folder onto the desktop, or right-click the exe → Send to → Desktop. |
+| Some quota rows are blank | Only signed-in sources appear. API-key Codex has no remaining percentage; use ChatGPT-plan `codex login`. |
+| SuperGrok is empty after sleep | It usually refreshes the local token by itself. If it still says the login expired, run `grok login` again. |
+| You quit the pet, Grok/Cursor stay open, and it does not come back | Intended. Restart Grok or Cursor, or open the pet yourself. |
+| Every source failed this round | The last successful snapshot is kept. Empty data is not written over it. |
+| The zip will not open as an app on macOS | This is a Windows build, not a `.app`. On a Mac, run from source or use `pack-mac.sh`. |
 
 ## Run from source
 
@@ -78,7 +104,7 @@ The preview renders fixed sample quotas and exits after three seconds without sa
 
 | Zip | What |
 |-----|------|
-| `GrokUsagePet-v0.3.10-Windows-x64.zip` | Current release (`GrokUsagePet.exe`). Rebuild with `pack-windows.ps1`. |
+| `GrokUsagePet-v0.3.11-Windows-x64.zip` | Current release (`GrokUsagePet.exe`). Rebuild with `pack-windows.ps1`. |
 | `GrokUsagePet-kawaii.zip` | Legacy v0.2.0 compatibility archive; not the current release. |
 
 Do not copy `auth.json`, Cursor `state.vscdb`, or `pet_state.json` into a zip.

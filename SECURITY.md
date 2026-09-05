@@ -84,6 +84,15 @@ the pack-time marker, exact release-directory format, expected executable and
 runtime, and contains no symbolic links or Windows reparse points. Source clones,
 renamed folders, and unmarked directories are never recursively deleted.
 
+## Windows SmartScreen and antivirus
+
+The portable executable is not Authenticode-signed. Windows may show SmartScreen
+or Controlled Folder Access prompts for an unsigned download. The app never
+disables antivirus, never adds Defender exclusions, and never strips the
+download mark-of-the-web. Desktop shortcuts are created in-process with the
+Windows Shell COM interfaces rather than hidden PowerShell. If the desktop is
+blocked, the `.lnk` is written next to the program folder instead.
+
 ## Release safety
 
 Tests are offline and use temporary credentials. The release script rejects
