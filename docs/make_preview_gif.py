@@ -47,9 +47,9 @@ def _crop_sprite(frame: Image.Image) -> Image.Image:
 
 
 def _bar_color(remaining: int) -> tuple[int, int, int, int]:
-    if remaining <= 20:
+    if remaining < 20:
         return (224, 90, 90, 255)
-    if remaining <= 50:
+    if remaining < 50:
         return MID
     return OK
 

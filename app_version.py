@@ -1,5 +1,5 @@
 """Single application version source."""
 
-APP_VERSION = "0.3.10"
+APP_VERSION = "0.3.11"
 INSTALL_MARKER_NAME = ".grok-usage-pet-install"
 INSTALL_MARKER_VALUE = "grok-usage-pet-portable-v1"

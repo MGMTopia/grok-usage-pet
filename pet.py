@@ -39,6 +39,7 @@ from pet_view_model import (
     format_pool_pct,
     pool_remainings,
     pool_tip_lines,
+    remaining_bar_level,
 )
 from skin_catalog import SkinCatalog
 
@@ -408,6 +409,14 @@ def _blend_hex(left: str, right: str, amount: float) -> str:
         b = int(dst[i : i + 2], 16)
         mixed.append(int(a + (b - a) * t))
     return f"#{mixed[0]:02x}{mixed[1]:02x}{mixed[2]:02x}"
+
+
+def remaining_bar_fill(value, ui: dict, *, tone: str | None = None) -> str:
+    level = remaining_bar_level(value)
+    fill = ui[{"ok": "bar_ok", "mid": "bar_mid", "low": "bar_low"}[level]]
+    if tone == "dark":
+        return _blend_hex(fill, "#000000", 0.18)
+    return fill
 
 
 def resolve_theme(theme: object) -> dict:
@@ -1233,23 +1242,63 @@ def format_purge_report(result: dict[str, list[str]], *, program_scheduled: bool
     return "\n".join(lines)
 
 
+def _windows_guid(text: str):
+    import ctypes
+    import uuid
+    from ctypes import wintypes
+
+    class GUID(ctypes.Structure):
+        _fields_ = [
+            ("Data1", wintypes.DWORD),
+            ("Data2", wintypes.WORD),
+            ("Data3", wintypes.WORD),
+            ("Data4", ctypes.c_ubyte * 8),
+        ]
+
+    value = uuid.UUID(text)
+    return GUID(
+        value.time_low,
+        value.time_mid,
+        value.time_hi_version,
+        (ctypes.c_ubyte * 8).from_buffer_copy(value.bytes[8:]),
+    )
+
+
+def _windows_hr_error(hr: int, action: str) -> OSError:
+    return OSError(f"{action} failed (0x{hr & 0xFFFFFFFF:08X})")
+
+
+def _windows_known_folder_desktop() -> Path | None:
+    import ctypes
+    from ctypes import wintypes
+
+    ole32 = ctypes.WinDLL("ole32", use_last_error=True)
+    shell32 = ctypes.WinDLL("shell32", use_last_error=True)
+    ole32.CoTaskMemFree.argtypes = [ctypes.c_void_p]
+    shell32.SHGetKnownFolderPath.argtypes = [
+        ctypes.c_void_p,
+        wintypes.DWORD,
+        ctypes.c_void_p,
+        ctypes.POINTER(ctypes.c_wchar_p),
+    ]
+    shell32.SHGetKnownFolderPath.restype = ctypes.HRESULT
+    folder_id = _windows_guid("B4BFCC3A-DB2C-424C-B029-7FE99A87C641")
+    ppath = ctypes.c_wchar_p()
+    hr = shell32.SHGetKnownFolderPath(ctypes.byref(folder_id), 0, None, ctypes.byref(ppath))
+    try:
+        if hr < 0 or not ppath.value:
+            return None
+        path = Path(ppath.value)
+    finally:
+        ole32.CoTaskMemFree(ppath)
+    return path if str(path) else None
+
+
 def desktop_dir() -> Path:
     if os.name == "nt":
         try:
-            out = subprocess.check_output(
-                [
-                    "powershell",
-                    "-NoProfile",
-                    "-Command",
-                    "[Environment]::GetFolderPath('Desktop')",
-                ],
-                text=True,
-                encoding="utf-8",
-                errors="ignore",
-                creationflags=CREATE_NO_WINDOW,
-            ).strip()
-            known = Path(out)
-            if known.exists():
+            known = _windows_known_folder_desktop()
+            if known is not None and (known.is_dir() or not known.exists()):
                 return known
         except Exception:
             pass
@@ -1278,35 +1327,194 @@ def _shortcut_argument_string(parts: list[str]) -> str:
     return " ".join(bits)
 
 
-def create_desktop_shortcut() -> Path:
-    _target, args = gui_command()
-    desktop = desktop_dir()
+def _shortcut_icon_path() -> Path | None:
+    candidates = [
+        ASSETS / "app.ico",
+        SKINS_DIR / DEFAULT_SKIN_ID / "app.ico",
+        fu.resource_dir() / "skins" / DEFAULT_SKIN_ID / "app.ico",
+    ]
+    if fu.is_frozen():
+        candidates.append(Path(sys.executable))
+    for path in candidates:
+        try:
+            if path.is_file():
+                return path
+        except OSError:
+            continue
+    return None
+
+
+def desktop_shortcut_spec(*, desktop: Path | None = None) -> dict[str, object]:
+    target, args = gui_command()
+    folder = desktop if desktop is not None else desktop_dir()
     if os.name == "nt":
-        shortcut_name = "Grok额度宠物-可爱版.lnk" if fu.pack_id() == "kawaii" else "Grok额度宠物.lnk"
-        name = desktop / shortcut_name
-        arg_str = _shortcut_argument_string(args[1:])
-        icon = ASSETS / "app.ico"
-        icon_line = ""
-        if icon.exists():
-            icon_line = f"$s.IconLocation = {_ps_quote(str(icon.resolve()) + ',0')};"
-        script = (
-            f"$s = (New-Object -ComObject WScript.Shell).CreateShortcut({_ps_quote(str(name))});"
-            f"$s.TargetPath = {_ps_quote(_target)};"
-            f"$s.Arguments = {_ps_quote(arg_str)};"
-            f"$s.WorkingDirectory = {_ps_quote(str(fu.install_dir()))};"
-            "$s.WindowStyle = 1;"
-            "$s.Description = 'Grok remaining usage pet';"
-            f"{icon_line}"
-            "$s.Save()"
+        name = "Grok额度宠物-可爱版.lnk" if fu.pack_id() == "kawaii" else "Grok额度宠物.lnk"
+    else:
+        name = "Grok额度宠物-可爱版.command" if fu.pack_id() == "kawaii" else "Grok额度宠物.command"
+    icon = _shortcut_icon_path()
+    return {
+        "path": folder / name,
+        "target": target,
+        "arguments": _shortcut_argument_string(args[1:]),
+        "working_directory": str(fu.install_dir()),
+        "icon": str(icon.resolve()) if icon is not None else "",
+        "description": "Grok remaining usage pet",
+    }
+
+
+def _windows_com_fn(interface, index, restype, *argtypes):
+    import ctypes
+
+    vtbl_ptr = ctypes.cast(interface, ctypes.POINTER(ctypes.c_void_p))[0]
+    vtbl = ctypes.cast(vtbl_ptr, ctypes.POINTER(ctypes.c_void_p))
+    prototype = ctypes.WINFUNCTYPE(restype, ctypes.c_void_p, *argtypes)
+    return prototype(vtbl[index])
+
+
+def _write_windows_lnk_com(spec: dict[str, object]) -> None:
+    import ctypes
+    from ctypes import wintypes
+
+    ole32 = ctypes.WinDLL("ole32", use_last_error=True)
+    ole32.CoInitializeEx.argtypes = [ctypes.c_void_p, wintypes.DWORD]
+    ole32.CoInitializeEx.restype = ctypes.HRESULT
+    ole32.CoCreateInstance.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        wintypes.DWORD,
+        ctypes.c_void_p,
+        ctypes.POINTER(ctypes.c_void_p),
+    ]
+    ole32.CoCreateInstance.restype = ctypes.HRESULT
+    ole32.CoUninitialize.argtypes = []
+
+    clsid = _windows_guid("00021401-0000-0000-C000-000000000046")
+    iid_link = _windows_guid("000214F9-0000-0000-C000-000000000046")
+    iid_file = _windows_guid("0000010b-0000-0000-C000-000000000046")
+    link = ctypes.c_void_p()
+    persist = ctypes.c_void_p()
+    initialized = False
+    hr = ole32.CoInitializeEx(None, 0x2)
+    if hr == 0:
+        initialized = True
+    elif hr not in (1, -2147417850):
+        raise _windows_hr_error(hr, "CoInitializeEx")
+    try:
+        hr = ole32.CoCreateInstance(
+            ctypes.byref(clsid),
+            None,
+            1,
+            ctypes.byref(iid_link),
+            ctypes.byref(link),
         )
-        subprocess.run(
-            ["powershell", "-NoProfile", "-Command", script],
-            check=True,
-            creationflags=CREATE_NO_WINDOW,
+        if hr < 0 or not link.value:
+            raise _windows_hr_error(hr, "CoCreateInstance(ShellLink)")
+        set_path = _windows_com_fn(link, 20, ctypes.HRESULT, wintypes.LPCWSTR)
+        set_description = _windows_com_fn(link, 7, ctypes.HRESULT, wintypes.LPCWSTR)
+        set_working_directory = _windows_com_fn(link, 9, ctypes.HRESULT, wintypes.LPCWSTR)
+        set_arguments = _windows_com_fn(link, 11, ctypes.HRESULT, wintypes.LPCWSTR)
+        set_show_cmd = _windows_com_fn(link, 15, ctypes.HRESULT, ctypes.c_int)
+        set_icon_location = _windows_com_fn(link, 17, ctypes.HRESULT, wintypes.LPCWSTR, ctypes.c_int)
+        query_interface = _windows_com_fn(
+            link,
+            0,
+            ctypes.HRESULT,
+            ctypes.c_void_p,
+            ctypes.POINTER(ctypes.c_void_p),
         )
-        return name
-    name = desktop / "Grok额度宠物.command"
-    quoted = " ".join(shlex.quote(part) for part in args)
+        release_link = _windows_com_fn(link, 2, wintypes.ULONG)
+        hr = set_path(link, str(spec["target"]))
+        if hr < 0:
+            raise _windows_hr_error(hr, "SetPath")
+        hr = set_arguments(link, str(spec["arguments"]))
+        if hr < 0:
+            raise _windows_hr_error(hr, "SetArguments")
+        hr = set_working_directory(link, str(spec["working_directory"]))
+        if hr < 0:
+            raise _windows_hr_error(hr, "SetWorkingDirectory")
+        hr = set_description(link, str(spec["description"]))
+        if hr < 0:
+            raise _windows_hr_error(hr, "SetDescription")
+        hr = set_show_cmd(link, 1)
+        if hr < 0:
+            raise _windows_hr_error(hr, "SetShowCmd")
+        icon = str(spec.get("icon") or "")
+        if icon:
+            hr = set_icon_location(link, icon, 0)
+            if hr < 0:
+                raise _windows_hr_error(hr, "SetIconLocation")
+        hr = query_interface(link, ctypes.byref(iid_file), ctypes.byref(persist))
+        if hr < 0 or not persist.value:
+            raise _windows_hr_error(hr, "QueryInterface(IPersistFile)")
+        save = _windows_com_fn(persist, 6, ctypes.HRESULT, wintypes.LPCWSTR, wintypes.BOOL)
+        release_file = _windows_com_fn(persist, 2, wintypes.ULONG)
+        hr = save(persist, str(spec["path"]), True)
+        release_file(persist)
+        persist.value = None
+        if hr < 0:
+            raise _windows_hr_error(hr, "IPersistFile.Save")
+        release_link(link)
+        link.value = None
+    finally:
+        if persist.value:
+            _windows_com_fn(persist, 2, wintypes.ULONG)(persist)
+        if link.value:
+            _windows_com_fn(link, 2, wintypes.ULONG)(link)
+        if initialized:
+            ole32.CoUninitialize()
+
+
+def _shortcut_blocked_by_system(detail: str) -> bool:
+    text = detail.casefold()
+    return any(
+        token in text
+        for token in (
+            "0x80070005",
+            "access is denied",
+            "拒绝访问",
+            "0x800704ec",
+        )
+    )
+
+
+def _shortcut_block_message(errors: list[str]) -> str:
+    detail = "；".join(item for item in errors if item)
+    if _shortcut_blocked_by_system(detail):
+        return (
+            "无法写入桌面快捷方式：Windows 可能拦截了桌面写入"
+            "（SmartScreen 或受控文件夹访问）。"
+            "可在 Windows 安全中心把本程序加入允许应用，"
+            "或右键 GrokUsagePet.exe → 发送到 → 桌面快捷方式。"
+            "本程序不会关闭杀毒或自动添加排除项。"
+        )
+    return "无法写入桌面快捷方式：" + (detail or "文件没有出现")
+
+
+def create_desktop_shortcut() -> Path:
+    spec = desktop_shortcut_spec()
+    name = Path(spec["path"])
+    name.parent.mkdir(parents=True, exist_ok=True)
+    if os.name == "nt":
+        errors: list[str] = []
+        try:
+            _write_windows_lnk_com(spec)
+        except Exception as exc:
+            errors.append(str(exc))
+        if name.is_file():
+            return name
+        fallback = fu.install_dir() / name.name
+        if fallback.resolve() != name.resolve():
+            fallback_spec = dict(spec)
+            fallback_spec["path"] = fallback
+            try:
+                fallback.parent.mkdir(parents=True, exist_ok=True)
+                _write_windows_lnk_com(fallback_spec)
+            except Exception as exc:
+                errors.append(str(exc))
+            if fallback.is_file():
+                return fallback
+        raise RuntimeError(_shortcut_block_message(errors))
+    quoted = " ".join(shlex.quote(part) for part in gui_command()[1])
     name.write_text(
         "#!/bin/bash\n"
         f"cd {shlex.quote(str(fu.install_dir()))}\n"
@@ -1962,7 +2170,7 @@ class UsagePet:
             self._enabled_vars[key] = var
             meta = POOL_META[key]
             add_switch(inner, f"{meta['title']}  {meta['tag']}", var, lambda k=key: self._on_toggle(k))
-        hint("每条都是：名称、周期、剩余。悬停看重置时间。关掉的条目不显示，也不参与表情。Codex 深色 5 小时、浅色周额度。")
+        hint("每条都是：名称、周期、剩余。悬停看重置时间。关掉的条目不显示，也不参与表情。Codex 5 小时颜色和其他条一样，周额度在同色上略深。")
 
         heading("随软件启动")
         inner = card()
@@ -2335,7 +2543,18 @@ class UsagePet:
     def install_shortcut(self) -> None:
         try:
             path = create_desktop_shortcut()
-            self._toast(f"快捷方式：\n{path}")
+            try:
+                on_desktop = path.parent.resolve() == desktop_dir().resolve()
+            except OSError:
+                on_desktop = False
+            if on_desktop:
+                self._toast(f"快捷方式：\n{path}")
+            else:
+                self._toast(
+                    "桌面写入被拦截，已放在程序目录：\n"
+                    f"{path}\n"
+                    "可把它拖到桌面，或在 Windows 安全中心允许本程序访问桌面。"
+                )
         except Exception as exc:
             self._toast(f"创建失败：{exc}")
 
@@ -2846,7 +3065,7 @@ class UsagePet:
     def _fill_bar(self, x: int, y: int, w: int, h: int, pct: float, fill: str, cute: bool) -> None:
         if pct <= 0:
             return
-        fw = max(h if cute else 2, int(w * pct / 100.0))
+        fw = max(2, int(round(w * pct / 100.0)))
         x2 = x + min(w, fw)
         if cute:
             canvas_round_rect(self.canvas, x, y, x2, y + h, h / 2, fill=fill, outline="")
@@ -2868,7 +3087,7 @@ class UsagePet:
                 continue
             pct = max(0.0, min(100.0, float(rem)))
             tone = layer.get("tone") or "dark"
-            color = ui["bar_layer_dark"] if tone == "dark" else ui["bar_layer_light"]
+            color = remaining_bar_fill(pct, ui, tone=tone)
             fills.append((pct, color, tone))
         if fills:
             for pct, color, _tone in sorted(
@@ -2890,8 +3109,7 @@ class UsagePet:
             self._draw_spinner(x + w - 10, y + h / 2, radius=5)
             return
         pct = max(0.0, min(100.0, float(remaining)))
-        fill = ui["bar_ok"] if pct >= 50 else ui["bar_mid"] if pct >= 20 else ui["bar_low"]
-        self._fill_bar(x, y, w, h, pct, fill, cute)
+        self._fill_bar(x, y, w, h, pct, remaining_bar_fill(pct, ui), cute)
 
     def run(self) -> None:
         print("entering mainloop", flush=True)
@@ -2977,6 +3195,7 @@ def main() -> None:
         watch_apps.main()
         return
     if "--install" in args:
+        activate_skin(str(load_state().get("skin") or DEFAULT_SKIN_ID))
         print(install_hook())
         print(create_desktop_shortcut())
         return
