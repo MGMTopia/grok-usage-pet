@@ -1711,6 +1711,43 @@ class UsagePet:
             return 48, 48
         return x, y
 
+    def _begin_layout_repaint(self, *, initial: bool) -> float | None:
+        """Hide a visible Windows layer while its geometry and canvas diverge."""
+        if initial or os.name != "nt":
+            return None
+        previous: float | None = None
+        try:
+            if not self.root.winfo_viewable():
+                return None
+            previous = float(self.root.attributes("-alpha"))
+            self.root.attributes("-alpha", 0.0)
+            # Force the compositor to stop presenting the old canvas before
+            # Tk applies the new size/position and sprite coordinates.
+            self.root.update_idletasks()
+            return previous
+        except (tk.TclError, TypeError, ValueError):
+            if previous is not None:
+                try:
+                    self.root.attributes("-alpha", previous)
+                except tk.TclError:
+                    pass
+            return None
+
+    def _finish_layout_repaint(self, previous_alpha: float | None) -> None:
+        if previous_alpha is None:
+            return
+        try:
+            # Paint the complete new layout while the layered window is hidden,
+            # then reveal it as one finished frame. This avoids a sprite being
+            # composited briefly at the old quota-bubble origin.
+            self.draw()
+            self.root.update_idletasks()
+        finally:
+            try:
+                self.root.attributes("-alpha", previous_alpha)
+            except tk.TclError:
+                pass
+
     def _apply_layout(self, initial: bool = False) -> None:
         win_w, win_h, sprite_y = self._layout_metrics()
         if (
@@ -1741,11 +1778,21 @@ class UsagePet:
             new_y = max(0, min(new_y, max(0, sh - win_h)))
         else:
             new_x, new_y = self._clamp_pos(new_x, new_y, win_w, win_h)
-        self._win_w, self._win_h, self._sprite_y = win_w, win_h, sprite_y
-        self._geom = f"{win_w}x{win_h}+{new_x}+{new_y}"
-        self.canvas.config(width=win_w, height=win_h)
-        self.root.geometry(self._geom)
-        self._apply_chrome()
+        previous_alpha = self._begin_layout_repaint(initial=initial)
+        try:
+            self._win_w, self._win_h, self._sprite_y = win_w, win_h, sprite_y
+            self._geom = f"{win_w}x{win_h}+{new_x}+{new_y}"
+            self.canvas.config(width=win_w, height=win_h)
+            self.root.geometry(self._geom)
+            self._apply_chrome()
+            self._finish_layout_repaint(previous_alpha)
+        except Exception:
+            if previous_alpha is not None:
+                try:
+                    self.root.attributes("-alpha", previous_alpha)
+                except tk.TclError:
+                    pass
+            raise
         print(
             f"layout {self._geom} hover_open={self._hover_open} pinned={self.pinned}",
             flush=True,
