@@ -31,8 +31,18 @@ import fetch_usage as fu
 import cursor_hooks
 import skin_catalog
 import app_update
+import info_modules
+import clock_module
 from app_version import APP_VERSION, INSTALL_MARKER_NAME, INSTALL_MARKER_VALUE
 from snapshot_store import write_text_atomic
+from pet_settings import (
+    DEFAULT_QUOTA_ENABLED,
+    SESSION_LAYOUT_KEYS,
+    clamp_info_panel,
+    normalize_enabled,
+    normalize_info_panel,
+    normalize_state,
+)
 from pet_view_model import (
     POOL_META,
     build_pools,
@@ -229,18 +239,12 @@ _THEME_ENUM_KEYS = {
     "tipStyle": ("tip_style", {"rounded", "square"}),
     "decoration": ("decoration", {"none", "bow", "circuit"}),
 }
-_SESSION_LAYOUT_KEYS = ("pinned", "expanded")
+_SESSION_LAYOUT_KEYS = SESSION_LAYOUT_KEYS
 _ACTIVE_STYLE: dict | None = None
 _THEME_PRESETS = ("tech", "soft", "classic")
 BUBBLE_ROWS = ("sg", "bot", "cm", "om", "cx")
 ROW_LABELS = {key: POOL_META[key]["title"] for key in BUBBLE_ROWS}
-DEFAULT_ENABLED = {
-    "sg": True,
-    "bot": True,
-    "cm": True,
-    "om": True,
-    "cx": True,
-}
+DEFAULT_ENABLED = dict(DEFAULT_QUOTA_ENABLED)
 ATLAS_NAME = "spritesheet.webp"
 ATLAS_SIZE = (1536, 2288)
 ANIMATIONS = {
@@ -311,6 +315,60 @@ def quota_fetch_oneshot(
 
 def idle_wave_due(last_activity: float, now: float, idle_s: float = IDLE_WAVE_S) -> bool:
     return (now - last_activity) >= idle_s
+
+
+def quota_sources_enabled(enabled: dict[str, bool] | None) -> bool:
+    """Return whether any optional quota provider is enabled.
+
+    The desktop-pet core must remain usable when every information source is
+    disabled.  Keep this check limited to the known provider keys so legacy
+    or future settings cannot accidentally enable network work.
+    """
+    values = enabled or {}
+    return any(bool(values.get(key, False)) for key in BUBBLE_ROWS)
+
+
+def resolve_animation_state(
+    *,
+    dragging: bool,
+    drag_dx: int,
+    oneshot: str | None,
+    look_target: int | None,
+    snapshot_present: bool,
+    busy: bool,
+    bars_visible: bool,
+    animations: dict[str, list] | set[str],
+    quota_enabled: bool = True,
+    current_animation: str | None = None,
+) -> str | None:
+    """Resolve the explicit animation priority without touching UI state."""
+    available = set(animations)
+    if dragging:
+        if drag_dx < 0 and "running-left" in available:
+            return "running-left"
+        if drag_dx > 0 and "running-right" in available:
+            return "running-right"
+        if current_animation in ("running-left", "running-right") and current_animation in available:
+            return current_animation
+        if "idle" in available:
+            return "idle"
+    if oneshot and oneshot in available:
+        return oneshot
+    # Look frames live in the separate `_looks` collection rather than the
+    # ordinary animation map, so the target itself is the availability signal.
+    if look_target is not None:
+        return "look"
+    if not quota_enabled:
+        return "idle" if "idle" in available else None
+    if not snapshot_present and "waiting" in available:
+        return "waiting"
+    if busy and "running" in available:
+        return "running"
+    if bars_visible and "review" in available:
+        return "review"
+    if "idle" in available:
+        return "idle"
+    return None
 
 
 def _angular_distance_degrees(left: float, right: float) -> float:
@@ -547,28 +605,25 @@ def load_state() -> dict:
             loaded = {}
         if isinstance(loaded, dict):
             raw = loaded
-    for key in _SESSION_LAYOUT_KEYS:
-        raw.pop(key, None)
-    return raw
+    return normalize_state(raw)
 
 
 def save_state(data: dict) -> None:
     current = load_state()
     current.update(data)
-    for key in _SESSION_LAYOUT_KEYS:
-        current.pop(key, None)
+    current = normalize_state(current)
     write_text_atomic(STATE_FILE, json.dumps(current, ensure_ascii=False, indent=2) + "\n")
 
 
 def load_enabled() -> dict[str, bool]:
-    raw = (load_state().get("enabled") or {}) if STATE_FILE.exists() else {}
-    enabled = dict(DEFAULT_ENABLED)
-    for key in BUBBLE_ROWS:
-        if key in raw:
-            enabled[key] = bool(raw[key])
-    if "cx" not in raw and ("cx5" in raw or "cxw" in raw):
-        enabled["cx"] = bool(raw.get("cx5", True)) or bool(raw.get("cxw", True))
-    return enabled
+    if not STATE_FILE.exists():
+        return dict(DEFAULT_ENABLED)
+    return normalize_enabled(load_state().get("enabled"))
+
+
+def load_clock_state() -> dict:
+    clock = ((load_state().get("modules") or {}).get("clock") or {}) if STATE_FILE.exists() else {}
+    return clock_module.normalize_clock_state(clock)
 
 
 def _to_photo(im):
@@ -1533,6 +1588,11 @@ class UsagePet:
         self.pinned = True if self._preview_mode else False
         self.skin_id = activate_skin(str(load_state().get("skin") or DEFAULT_SKIN_ID))
         self.enabled = load_enabled()
+        self.clock_state = load_clock_state()
+        self.clock_enabled = dict(self.clock_state.get("enabled") or {})
+        self.info_panel = normalize_info_panel(load_state().get("info_panel"))
+        self._panel_hits: list[tuple[str, int, int, int, int]] = []
+        self._modules = info_modules.default_host()
         self.check_updates = bool(load_state().get("check_updates", True))
         self._update_info: app_update.LatestRelease | None = None
         self._update_busy = False
@@ -1572,7 +1632,7 @@ class UsagePet:
         self.root = tk.Tk()
         print("Tk created", flush=True)
         pick_ui_fonts(self.root)
-        self.root.title(f"Grok 额度 v{APP_VERSION}")
+        self.root.title(f"Grok Usage Pet v{APP_VERSION}")
         self._apply_app_icon(self.root)
         self.root.withdraw()
         self.root.overrideredirect(True)
@@ -1594,19 +1654,13 @@ class UsagePet:
         self.canvas.pack(fill="both", expand=True)
 
         self.menu = Menu(self.root, tearoff=0)
-        self.menu.add_command(label="刷新额度", command=self.refresh_now)
-        self.menu.add_command(label="固定 / 取消固定额度", command=self.toggle_expand)
-        self.menu.add_command(label="设置…", command=self.open_settings)
-        self.menu.add_command(label="创建桌面快捷方式", command=self.install_shortcut)
-        self.menu.add_separator()
-        self.menu.add_command(label="打开数据目录", command=self.open_data_dir)
-        self.menu.add_command(label="退出宠物", command=self.quit)
+        self._rebuild_menu()
 
         for seq, fn in (
             ("<ButtonPress-1>", self.on_press),
             ("<B1-Motion>", self.on_drag),
             ("<ButtonRelease-1>", self.on_release),
-            ("<Double-Button-1>", lambda e: self.toggle_expand()),
+            ("<Double-Button-1>", self.on_double),
             ("<Button-3>", self.on_menu),
             ("<Button-2>", self.on_menu),
             ("<Control-Button-1>", self.on_menu),
@@ -1684,17 +1738,44 @@ class UsagePet:
         except tk.TclError:
             pass
 
+    def available_panels(self) -> tuple[str, ...]:
+        panels: list[str] = []
+        if quota_sources_enabled(getattr(self, "enabled", DEFAULT_ENABLED)):
+            panels.append("quota")
+        if clock_module.clock_panel_available(getattr(self, "clock_enabled", {})):
+            panels.append("clock")
+        return tuple(panels)
+
+    def active_panel(self) -> str | None:
+        available = self.available_panels()
+        if not available:
+            return None
+        return clamp_info_panel(getattr(self, "info_panel", "quota"), available)
+
     def bars_visible(self) -> bool:
-        return bool((self.pinned or self._hover_open) and self.visible_rows())
+        return bool(
+            (getattr(self, "pinned", False) or getattr(self, "_hover_open", False))
+            and self.available_panels()
+        )
 
     def _layout_metrics(self) -> tuple[int, int, int]:
         ui = style()
-        rows = self.visible_rows() if self.bars_visible() else ()
         extra = int(ui.get("bubble_bottom") or 0)
-        bubble_h = (ui["bubble_top"] + len(rows) * ui["row_h"] + extra) if rows else 0
-        win_w = ui["bubble_w"] if rows else SPRITE_W
-        win_h = bubble_h + SPRITE_H
-        return win_w, win_h, bubble_h
+        if not self.bars_visible():
+            return SPRITE_W, SPRITE_H, 0
+        panel = self.active_panel()
+        tabs = len(self.available_panels()) > 1
+        if panel == "clock":
+            bubble_h = ui["bubble_top"] + clock_module.clock_panel_height(
+                getattr(self, "clock_enabled", {}),
+                tabs=tabs,
+            ) + extra
+        else:
+            rows = self.visible_rows()
+            tab_h = clock_module.PANEL_TAB_H if tabs else 0
+            bubble_h = ui["bubble_top"] + tab_h + len(rows) * ui["row_h"] + extra
+        win_w = ui["bubble_w"]
+        return win_w, bubble_h + SPRITE_H, bubble_h
 
     def _clamp_pos(self, x: int, y: int, w: int, h: int) -> tuple[int, int]:
         sw = self.root.winfo_screenwidth()
@@ -1710,6 +1791,43 @@ class UsagePet:
         except tk.TclError:
             return 48, 48
         return x, y
+
+    def _begin_layout_repaint(self, *, initial: bool) -> float | None:
+        """Hide a visible Windows layer while its geometry and canvas diverge."""
+        if initial or os.name != "nt":
+            return None
+        previous: float | None = None
+        try:
+            if not self.root.winfo_viewable():
+                return None
+            previous = float(self.root.attributes("-alpha"))
+            self.root.attributes("-alpha", 0.0)
+            # Force the compositor to stop presenting the old canvas before
+            # Tk applies the new size/position and sprite coordinates.
+            self.root.update_idletasks()
+            return previous
+        except (tk.TclError, TypeError, ValueError):
+            if previous is not None:
+                try:
+                    self.root.attributes("-alpha", previous)
+                except tk.TclError:
+                    pass
+            return None
+
+    def _finish_layout_repaint(self, previous_alpha: float | None) -> None:
+        if previous_alpha is None:
+            return
+        try:
+            # Paint the complete new layout while the layered window is hidden,
+            # then reveal it as one finished frame. This avoids a sprite being
+            # composited briefly at the old quota-bubble origin.
+            self.draw()
+            self.root.update_idletasks()
+        finally:
+            try:
+                self.root.attributes("-alpha", previous_alpha)
+            except tk.TclError:
+                pass
 
     def _apply_layout(self, initial: bool = False) -> None:
         win_w, win_h, sprite_y = self._layout_metrics()
@@ -1741,11 +1859,21 @@ class UsagePet:
             new_y = max(0, min(new_y, max(0, sh - win_h)))
         else:
             new_x, new_y = self._clamp_pos(new_x, new_y, win_w, win_h)
-        self._win_w, self._win_h, self._sprite_y = win_w, win_h, sprite_y
-        self._geom = f"{win_w}x{win_h}+{new_x}+{new_y}"
-        self.canvas.config(width=win_w, height=win_h)
-        self.root.geometry(self._geom)
-        self._apply_chrome()
+        previous_alpha = self._begin_layout_repaint(initial=initial)
+        try:
+            self._win_w, self._win_h, self._sprite_y = win_w, win_h, sprite_y
+            self._geom = f"{win_w}x{win_h}+{new_x}+{new_y}"
+            self.canvas.config(width=win_w, height=win_h)
+            self.root.geometry(self._geom)
+            self._apply_chrome()
+            self._finish_layout_repaint(previous_alpha)
+        except Exception:
+            if previous_alpha is not None:
+                try:
+                    self.root.attributes("-alpha", previous_alpha)
+                except tk.TclError:
+                    pass
+            raise
         print(
             f"layout {self._geom} hover_open={self._hover_open} pinned={self.pinned}",
             flush=True,
@@ -1798,6 +1926,11 @@ class UsagePet:
             self._frame = 0
             self._frame_acc = 0.0
 
+    def _play_module_reaction(self, name: str) -> None:
+        if self._drag or self._oneshot in {"waving", "jumping"}:
+            return
+        self._play_oneshot(name)
+
     def _look_index(self) -> int | None:
         if len(self._looks) < 16:
             return None
@@ -1829,29 +1962,25 @@ class UsagePet:
         return int((ang + LOOK_STEP_DEGREES / 2) / LOOK_STEP_DEGREES) % LOOK_SECTORS
 
     def _current_anim(self) -> str:
-        if self._drag:
-            if self._drag_dx < 0 and "running-left" in self._anims:
-                return "running-left"
-            if self._drag_dx > 0 and "running-right" in self._anims:
-                return "running-right"
-            return self._anim if self._anim in ("running-left", "running-right") else "idle"
-        if self._oneshot and self._oneshot in self._anims:
-            return self._oneshot
         # Pointer interaction is an explicit user action. Keep it ahead of the
         # ambient waiting/running/review states; otherwise a fresh machine with
         # no snapshot yet, an in-flight refresh, or an open quota bubble can
         # calculate a look target but never display any of the 16 look frames.
         self._look_target = self._look_index()
-        if self._look_target is not None:
-            return "look"
-        if self.snap is None and "waiting" in self._anims:
-            return "waiting"
-        if self._busy and "running" in self._anims:
-            return "running"
-        if self.bars_visible() and "review" in self._anims:
-            return "review"
-        if "idle" in self._anims:
-            return "idle"
+        resolved = resolve_animation_state(
+            dragging=bool(self._drag),
+            drag_dx=getattr(self, "_drag_dx", 0),
+            oneshot=getattr(self, "_oneshot", None),
+            look_target=self._look_target,
+            snapshot_present=self.snap is not None,
+            busy=getattr(self, "_busy", False),
+            bars_visible=self.bars_visible(),
+            animations=self._anims,
+            quota_enabled=quota_sources_enabled(getattr(self, "enabled", DEFAULT_ENABLED)),
+            current_animation=getattr(self, "_anim", "idle"),
+        )
+        if resolved is not None:
+            return resolved
         return self.mood()
 
     def _current_photo(self):
@@ -1869,17 +1998,32 @@ class UsagePet:
 
     def persist(self) -> None:
         x, y = self._collapsed_origin()
+        clock = clock_module.normalize_clock_state(getattr(self, "clock_state", {}))
+        clock["enabled"] = dict(getattr(self, "clock_enabled", clock.get("enabled") or {}))
         payload = {
             "x": x,
             "y": y,
             "enabled": dict(self.enabled),
             "skin": self.skin_id,
             "check_updates": self.check_updates,
+            "info_panel": self.active_panel() or "quota",
+            "modules": {
+                "quota": {"enabled": dict(self.enabled)},
+                "clock": clock,
+            },
         }
         try:
             save_state(payload)
         except tk.TclError:
-            save_state({"enabled": dict(self.enabled), "skin": self.skin_id, "check_updates": self.check_updates})
+            save_state(
+                {
+                    "enabled": dict(self.enabled),
+                    "skin": self.skin_id,
+                    "check_updates": self.check_updates,
+                    "info_panel": payload.get("info_panel") or "quota",
+                    "modules": payload["modules"],
+                }
+            )
 
     def _remainings(self) -> list[float]:
         if not self.snap:
@@ -1887,6 +2031,8 @@ class UsagePet:
         vals: list[float] = []
         pools = self._pools()
         for key in self.visible_rows():
+            if key not in BUBBLE_ROWS:
+                continue
             vals.extend(pool_remainings(pools[key]))
         return vals
 
@@ -1959,11 +2105,16 @@ class UsagePet:
             self.draw()
 
     def _hit_target(self, x: int, y: int) -> str | None:
-        if self.bars_visible():
+        for key, x0, y0, x1, y1 in getattr(self, "_panel_hits", []):
+            if x0 <= x <= x1 and y0 <= y <= y1:
+                return key
+        if self.bars_visible() and self.active_panel() == "quota":
             ui = style()
             rows = self.visible_rows()
+            tabs = len(self.available_panels()) > 1
+            origin = ui["bubble_top"] + (clock_module.PANEL_TAB_H if tabs else 0)
             for i, key in enumerate(rows):
-                top = ui["bubble_top"] + i * ui["row_h"]
+                top = origin + i * ui["row_h"]
                 if top <= y < top + ui["row_h"]:
                     return key
         x0, y0, x1, y1 = self._sprite_box
@@ -1973,6 +2124,8 @@ class UsagePet:
 
     def on_press(self, event) -> None:
         self._note_activity()
+        self._press_root = (event.x_root, event.y_root)
+        self._press_hit = self._hit_target(event.x, event.y)
         self._drag = (event.x_root, event.y_root, self.root.winfo_x(), self.root.winfo_y())
         self._last_drag_x = event.x_root
         self._drag_dx = 0
@@ -1992,9 +2145,120 @@ class UsagePet:
         self.root.geometry(f"+{new_x}+{new_y}")
 
     def on_release(self, event) -> None:
+        press = getattr(self, "_press_root", None)
+        hit = getattr(self, "_press_hit", None)
         self._drag = None
         self._drag_dx = 0
+        self._press_root = None
+        self._press_hit = None
+        if press is not None:
+            dx = event.x_root - press[0]
+            dy = event.y_root - press[1]
+            if dx * dx + dy * dy <= 36:
+                if hit == "tab:quota":
+                    self._set_info_panel("quota")
+                    return
+                if hit == "tab:clock":
+                    self._set_info_panel("clock")
+                    return
+                if hit == "tmr_toggle":
+                    self._toggle_timer()
+                    return
+                if hit == "tmr_reset":
+                    self._reset_timer()
+                    return
+                if hit == "tmr_mode_stopwatch":
+                    self._set_timer_mode("stopwatch")
+                    return
+                if hit == "tmr_mode_countdown":
+                    self._set_timer_mode("countdown")
+                    return
+                if str(hit or "").startswith("tmr_preset_"):
+                    try:
+                        minutes = int(str(hit).split("_")[-1])
+                    except ValueError:
+                        minutes = 5
+                    self._set_countdown_minutes(minutes)
+                    return
         self.persist()
+
+    def on_double(self, event) -> None:
+        hit = self._hit_target(event.x, event.y)
+        if hit in {"tmr_toggle", "tmr_reset", "tab:quota", "tab:clock", "tmr_mode_stopwatch", "tmr_mode_countdown"} or str(hit or "").startswith("tmr_preset_"):
+            return
+        self.toggle_expand()
+
+    def _set_info_panel(self, panel: str) -> None:
+        self._note_activity()
+        available = self.available_panels()
+        self.info_panel = clamp_info_panel(panel, available)
+        self.persist()
+        self._rebuild_menu()
+        self._apply_layout()
+        self.draw()
+
+    def _rebuild_menu(self) -> None:
+        menu = getattr(self, "menu", None)
+        if menu is None or not hasattr(menu, "delete") or not hasattr(menu, "add_command"):
+            return
+        try:
+            menu.delete(0, "end")
+            menu.add_command(label="固定 / 取消固定面板", command=self.toggle_expand)
+            menu.add_command(label="设置…", command=self.open_settings)
+            available = self.available_panels()
+            if "quota" in available and "clock" in available:
+                other = "clock" if self.active_panel() == "quota" else "quota"
+                menu.add_command(
+                    label="切换到时钟" if other == "clock" else "切换到额度",
+                    command=lambda p=other: self._set_info_panel(p),
+                )
+            if getattr(self, "clock_enabled", {}).get("timer") and self.active_panel() == "clock":
+                state = clock_module.normalize_clock_state(getattr(self, "clock_state", {}))
+                running = bool(state.get("timer_running"))
+                ringing = bool(state.get("timer_ringing"))
+                menu.add_command(label="关掉铃声" if ringing else ("暂停闹钟" if running else "开始闹钟"), command=self._toggle_timer)
+                menu.add_command(label="计时归零", command=self._reset_timer)
+            if quota_sources_enabled(getattr(self, "enabled", DEFAULT_ENABLED)):
+                menu.add_command(label="刷新额度", command=self.refresh_now)
+            menu.add_command(label="创建桌面快捷方式", command=self.install_shortcut)
+            menu.add_separator()
+            menu.add_command(label="打开数据目录", command=self.open_data_dir)
+            menu.add_command(label="退出宠物", command=self.quit)
+        except tk.TclError:
+            return
+
+    def _toggle_timer(self) -> None:
+        self._note_activity()
+        now = time.time()
+        self.clock_state = clock_module.toggle_timer(getattr(self, "clock_state", {}), now)
+        self.clock_enabled = dict(self.clock_state.get("enabled") or self.clock_enabled)
+        self.persist()
+        self._rebuild_menu()
+        self.draw()
+
+    def _reset_timer(self) -> None:
+        self._note_activity()
+        self.clock_state = clock_module.reset_timer(getattr(self, "clock_state", {}))
+        self.clock_enabled = dict(self.clock_state.get("enabled") or self.clock_enabled)
+        self.persist()
+        self._rebuild_menu()
+        self.draw()
+
+    def _set_timer_mode(self, mode: str) -> None:
+        self._note_activity()
+        self.clock_state = clock_module.set_timer_mode(getattr(self, "clock_state", {}), mode)
+        self.clock_enabled = dict(self.clock_state.get("enabled") or self.clock_enabled)
+        self.persist()
+        self._rebuild_menu()
+        self.draw()
+
+    def _set_countdown_minutes(self, minutes: int) -> None:
+        self._note_activity()
+        self.clock_state = clock_module.set_countdown_minutes(getattr(self, "clock_state", {}), minutes)
+        self.clock_enabled = dict(self.clock_state.get("enabled") or self.clock_enabled)
+        self.persist()
+        self._rebuild_menu()
+        self.draw()
 
     def on_menu(self, event) -> None:
         self._note_activity()
@@ -2002,6 +2266,7 @@ class UsagePet:
         if not self._hover_open:
             self._reveal_bars(jump=False)
             self.draw()
+        self._rebuild_menu()
         try:
             self.menu.tk_popup(event.x_root, event.y_root)
         finally:
@@ -2160,9 +2425,25 @@ class UsagePet:
             bind(sub)
             self._skin_chips[sid] = chip
         self._paint_skin_chips()
-        hint("形象决定配色和装饰：Original 科技蓝，加藤惠暖色。每条额度的内容和布局相同。")
+        hint("形象决定角色、配色和装饰。Original 是科技蓝，加藤惠是暖色圆角。")
 
-        heading("额度条")
+        heading("时钟板块")
+        inner = card()
+        self._clock_vars = {}
+        clock_labels = {"time": "显示时间", "timer": "闹钟与秒表"}
+        for key in ("time", "timer"):
+            var = tk.BooleanVar(value=self.clock_enabled.get(key, True))
+            self._clock_vars[key] = var
+            add_switch(inner, clock_labels[key], var, lambda k=key: self._on_toggle_clock(k))
+        clock_mod = self._modules.get("clock")
+        clock_perm = clock_mod.spec.permission_hint() if clock_mod is not None else ""
+        hint(
+            "本地功能，不需要账号。展开后点顶部「时钟 / 额度」切换。"
+            "闹钟按主题绘制，可倒计时或秒表。"
+            + (f" {clock_perm}。" if clock_perm else "")
+        )
+
+        heading("额度板块")
         inner = card()
         self._enabled_vars = {}
         for key in BUBBLE_ROWS:
@@ -2170,7 +2451,12 @@ class UsagePet:
             self._enabled_vars[key] = var
             meta = POOL_META[key]
             add_switch(inner, f"{meta['title']}  {meta['tag']}", var, lambda k=key: self._on_toggle(k))
-        hint("每条都是：名称、周期、剩余。悬停看重置时间。关掉的条目不显示，也不参与表情。Codex 5 小时颜色和其他条一样，周额度在同色上略深。")
+        quota_mod = self._modules.get("quota")
+        perm = quota_mod.spec.permission_hint() if quota_mod is not None else ""
+        hint(
+            "可选信息模块。关掉全部来源后不再显示该板块，桌宠仍可单独使用。"
+            + (f" {perm}。" if perm else "")
+        )
 
         heading("随软件启动")
         inner = card()
@@ -2281,6 +2567,8 @@ class UsagePet:
             self._skin_var.set(self.skin_id)
         for key, var in self._enabled_vars.items():
             var.set(self.enabled.get(key, True))
+        for key, var in getattr(self, "_clock_vars", {}).items():
+            var.set(self.clock_enabled.get(key, True))
         for paint in getattr(self, "_settings_paints", []):
             paint()
         self._paint_skin_chips()
@@ -2324,7 +2612,23 @@ class UsagePet:
             return
         self._note_activity()
         self.enabled[key] = bool(var.get())
+        self.info_panel = self.active_panel() or "quota"
         self.persist()
+        self._rebuild_menu()
+        self._apply_layout()
+        self.draw()
+
+    def _on_toggle_clock(self, key: str) -> None:
+        var = getattr(self, "_clock_vars", {}).get(key)
+        if var is None:
+            return
+        self._note_activity()
+        self.clock_enabled[key] = bool(var.get())
+        self.clock_state = clock_module.normalize_clock_state(self.clock_state)
+        self.clock_state["enabled"] = dict(self.clock_enabled)
+        self.info_panel = self.active_panel() or "quota"
+        self.persist()
+        self._rebuild_menu()
         self._apply_layout()
         self.draw()
 
@@ -2695,22 +2999,25 @@ class UsagePet:
         self.root.after(200, self._force_front)
 
     def refresh_now(self) -> None:
+        host = getattr(self, "_modules", None)
         if self._busy or self._closing:
+            return
+        if host is not None:
+            if not host.wants_refresh(self.enabled):
+                return
+        elif not quota_sources_enabled(self.enabled):
             return
         self._busy = True
         threading.Thread(target=self._fetch, daemon=True).start()
 
     def _fetch(self) -> None:
-        err = None
-        snap = None
-        try:
-            snap = fu.snapshot()
-            fu.write_snapshot(snap)
-            if snap.get("errors"):
-                err = "；".join(f"{k}: {v}" for k, v in snap["errors"].items())
-        except (Exception, SystemExit) as exc:
-            err = fu.redact_sensitive_text(exc)
-        self._fetch_results.put((snap, err))
+        host = getattr(self, "_modules", None) or info_modules.default_host()
+        results = host.refresh_enabled(self.enabled)
+        quota = results.get("quota")
+        if quota is None:
+            self._fetch_results.put((None, None))
+            return
+        self._fetch_results.put((quota.snapshot, quota.error))
 
     def _poll_fetch_results(self) -> None:
         if self._closing:
@@ -2733,8 +3040,8 @@ class UsagePet:
                 error=bool(self.error),
                 has_snap=self.snap is not None,
             )
-            if reaction and self._oneshot != "waving":
-                self._play_oneshot(reaction)
+            if reaction:
+                self._play_module_reaction(reaction)
         else:
             self.error = err
         self._apply_layout()
@@ -2790,9 +3097,19 @@ class UsagePet:
                         self._frame = next_frame
                 elif steps:
                     self._frame = (self._frame + steps) % len(frames)
+        if getattr(self, "clock_enabled", {}).get("timer"):
+            was_ringing = bool(clock_module.normalize_clock_state(getattr(self, "clock_state", {})).get("timer_ringing"))
+            self.clock_state = clock_module.advance_timer(getattr(self, "clock_state", {}), time.time())
+            if self.clock_state.get("timer_ringing") and not was_ringing:
+                self._play_module_reaction("waving")
+                self.persist()
         self.draw()
         self.root.after(TICK_MS, self.animate)
-        if self._tick * TICK_MS % REFRESH_MS < TICK_MS:
+        host = getattr(self, "_modules", None)
+        interval = host.refresh_ms(self.enabled) if host is not None else (
+            REFRESH_MS if quota_sources_enabled(self.enabled) else None
+        )
+        if interval and self._tick * TICK_MS % interval < TICK_MS:
             self.refresh_now()
 
     def draw(self) -> None:
@@ -2821,22 +3138,248 @@ class UsagePet:
 
         if self.bars_visible():
             self._draw_bubble()
-        if self._hover in BUBBLE_ROWS:
+        if self._hover in BUBBLE_ROWS or str(self._hover or "").startswith(("tmr_", "tab:")):
             self._draw_reset_tip()
 
     def _pools(self) -> dict:
         return build_pools(self.snap)
 
+    def _draw_panel_tabs(self, c, x0: int, x1: int, y0: int, ui: dict) -> int:
+        pad = 14
+        track_y = y0 + 2
+        track_h = clock_module.PANEL_TAB_H - 6
+        tx0, tx1 = x0 + pad, x1 - pad
+        mid = (tx0 + tx1) / 2
+        rounded = ui.get("bar_style") != "square"
+        inner = ui.get("inner") or ui["bar_track"]
+        if rounded:
+            canvas_round_rect(c, tx0, track_y, tx1, track_y + track_h, track_h / 2, fill=inner, outline="")
+        else:
+            c.create_rectangle(tx0, track_y, tx1, track_y + track_h, fill=inner, outline=ui["bubble_outline"])
+        active = self.active_panel()
+        for pid, label, left, right in (
+            ("clock", "时钟", tx0, mid),
+            ("quota", "额度", mid, tx1),
+        ):
+            on = pid == active
+            if on:
+                if rounded:
+                    canvas_round_rect(
+                        c, left + 3, track_y + 2, right - 3, track_y + track_h - 2,
+                        (track_h - 4) / 2, fill=ui["accent"], outline="",
+                    )
+                else:
+                    c.create_rectangle(left + 2, track_y + 2, right - 2, track_y + track_h - 2, fill=ui["accent"], outline="")
+            if on:
+                text_fill = "#10243A" if ui.get("decoration") == "circuit" else "#ffffff"
+            else:
+                text_fill = ui["label"]
+            c.create_text(
+                (left + right) / 2,
+                track_y + track_h / 2,
+                text=label,
+                fill=text_fill,
+                font=ui["font_title"],
+            )
+            self._panel_hits.append((f"tab:{pid}", int(left), int(track_y), int(right), int(track_y + track_h)))
+        return y0 + clock_module.PANEL_TAB_H
+
+    def _alarm_hand(self, c, cx: float, cy: float, length: float, angle: float, color: str, width: float) -> None:
+        rad = math.radians(float(angle) - 90.0)
+        c.create_line(
+            cx, cy,
+            cx + length * math.cos(rad),
+            cy + length * math.sin(rad),
+            fill=color, width=width, capstyle=tk.ROUND,
+        )
+
+    def _draw_alarm_clock(self, c, cx: float, cy: float, radius: float, ui: dict, view: dict) -> None:
+        tick = getattr(self, "_tick", 0)
+        shake = math.sin(tick / 2.0) * 2.4 if view.get("timer_ringing") else 0.0
+        cx += shake
+        style_key = ui.get("decoration") or "none"
+        accent = ui["accent"]
+        outline = ui["bubble_outline"]
+        face = ui.get("inner") or ui["bubble_fill"]
+        pct = ui["pct"]
+        low = ui.get("bar_low") or accent
+        if view.get("timer_ringing"):
+            accent = low
+        hour_deg = float(view.get("hour_deg") or 0)
+        minute_deg = float(view.get("minute_deg") or 0)
+        second_deg = float(view.get("second_deg") or 0)
+        if style_key == "circuit":
+            c.create_oval(cx - radius - 3, cy - radius - 3, cx + radius + 3, cy + radius + 3, outline=outline, width=2)
+            c.create_oval(cx - radius, cy - radius, cx + radius, cy + radius, fill=face, outline=accent, width=2)
+            for deg in range(0, 360, 30):
+                rad = math.radians(deg - 90)
+                inner = radius - 4 if deg % 90 else radius - 7
+                c.create_line(
+                    cx + inner * math.cos(rad), cy + inner * math.sin(rad),
+                    cx + (radius - 1) * math.cos(rad), cy + (radius - 1) * math.sin(rad),
+                    fill=accent, width=2 if deg % 90 == 0 else 1,
+                )
+            fin = radius * 0.42
+            for sign in (-1, 1):
+                c.create_polygon(
+                    cx + sign * 8, cy - radius - 2,
+                    cx + sign * (8 + fin), cy - radius - 10,
+                    cx + sign * (4 + fin), cy - radius - 16,
+                    cx + sign * 4, cy - radius - 6,
+                    fill=outline, outline=accent,
+                )
+            c.create_rectangle(cx - 3, cy - radius - 8, cx + 3, cy - radius - 2, fill=accent, outline="")
+            if view.get("timer_mode") == "countdown":
+                extent = max(8.0, min(359.0, 360.0 * float(view.get("progress") or 0)))
+                c.create_arc(
+                    cx - radius + 5, cy - radius + 5, cx + radius - 5, cy + radius - 5,
+                    start=90, extent=-extent, style=tk.ARC, outline=accent, width=3,
+                )
+            self._alarm_hand(c, cx, cy, radius * 0.45, hour_deg, pct, 3)
+            self._alarm_hand(c, cx, cy, radius * 0.68, minute_deg, accent, 2)
+            self._alarm_hand(c, cx, cy, radius * 0.78, second_deg, low, 1)
+            c.create_oval(cx - 3, cy - 3, cx + 3, cy + 3, fill=accent, outline="")
+            return
+        if style_key == "bow":
+            bell_y = cy - radius - 4
+            for sign in (-1, 1):
+                c.create_oval(
+                    cx + sign * 12 - 11, bell_y - 11,
+                    cx + sign * 12 + 11, bell_y + 9,
+                    fill=accent, outline=outline, width=1,
+                )
+                c.create_oval(
+                    cx + sign * 12 - 6, bell_y - 8,
+                    cx + sign * 12 + 2, bell_y - 1,
+                    fill="#fff7f2", outline="",
+                )
+            c.create_oval(cx - 4, bell_y - 6, cx + 4, bell_y + 6, fill=ui.get("label_hot") or accent, outline=outline)
+            c.create_oval(cx - radius, cy - radius, cx + radius, cy + radius, fill="#fffaf6", outline=outline, width=2)
+            c.create_oval(cx - radius + 4, cy - radius + 4, cx + radius - 4, cy + radius - 4, fill="#fff7f2", outline="")
+            c.create_oval(cx - 16, cy + 4, cx - 6, cy + 12, fill="#f4c4bc", outline="")
+            c.create_oval(cx + 6, cy + 4, cx + 16, cy + 12, fill="#f4c4bc", outline="")
+            for deg in (0, 90, 180, 270):
+                rad = math.radians(deg - 90)
+                c.create_oval(
+                    cx + (radius - 8) * math.cos(rad) - 2,
+                    cy + (radius - 8) * math.sin(rad) - 2,
+                    cx + (radius - 8) * math.cos(rad) + 2,
+                    cy + (radius - 8) * math.sin(rad) + 2,
+                    fill=accent, outline="",
+                )
+            c.create_line(cx - 7, cy + radius + 2, cx - 11, cy + radius + 10, fill=outline, width=2)
+            c.create_line(cx + 7, cy + radius + 2, cx + 11, cy + radius + 10, fill=outline, width=2)
+            if view.get("timer_mode") == "countdown":
+                extent = max(8.0, min(359.0, 360.0 * float(view.get("progress") or 0)))
+                c.create_arc(
+                    cx - radius + 6, cy - radius + 6, cx + radius - 6, cy + radius - 6,
+                    start=90, extent=-extent, style=tk.ARC, outline=accent, width=3,
+                )
+            self._alarm_hand(c, cx, cy, radius * 0.42, hour_deg, ui["label"], 3)
+            self._alarm_hand(c, cx, cy, radius * 0.62, minute_deg, accent, 2)
+            self._alarm_hand(c, cx, cy, radius * 0.72, second_deg, ui.get("label_hot") or accent, 1)
+            c.create_oval(cx - 3.5, cy - 3.5, cx + 3.5, cy + 3.5, fill=accent, outline="")
+            return
+        c.create_oval(cx - radius, cy - radius, cx + radius, cy + radius, fill=face, outline=outline, width=2)
+        c.create_rectangle(cx - 14, cy - radius - 8, cx - 4, cy - radius + 2, fill=outline, outline="")
+        c.create_rectangle(cx + 4, cy - radius - 8, cx + 14, cy - radius + 2, fill=outline, outline="")
+        self._alarm_hand(c, cx, cy, radius * 0.5, minute_deg, accent, 2)
+        self._alarm_hand(c, cx, cy, radius * 0.7, second_deg, pct, 1)
+        c.create_oval(cx - 2, cy - 2, cx + 2, cy + 2, fill=accent, outline="")
+
+    def _draw_clock_button(self, c, x0: int, y0: int, x1: int, y1: int, text: str, key: str, ui: dict, *, primary: bool) -> None:
+        rounded = ui.get("bar_style") != "square"
+        fill = ui["accent"] if primary else ui["bar_track"]
+        if rounded:
+            canvas_round_rect(c, x0, y0, x1, y1, (y1 - y0) / 2, fill=fill, outline="")
+        else:
+            c.create_rectangle(x0, y0, x1, y1, fill=fill, outline=ui["bubble_outline"])
+        if primary:
+            text_fill = "#10243A" if ui.get("decoration") == "circuit" else "#ffffff"
+        else:
+            text_fill = ui["label"]
+        c.create_text((x0 + x1) / 2, (y0 + y1) / 2, text=text, fill=text_fill, font=ui["font_title"])
+        self._panel_hits.append((key, int(x0), int(y0), int(x1), int(y1)))
+
+    def _draw_clock_panel(self, c, x0: int, x1: int, y: int, ui: dict) -> None:
+        view = clock_module.clock_panel_view(
+            getattr(self, "clock_enabled", {}),
+            getattr(self, "clock_state", {}),
+            now=time.time(),
+        )
+        family = ui["font_title"][0]
+        pad = 16
+        cx = (x0 + x1) / 2
+        rounded = ui.get("bubble_style") != "classic"
+        if view["show_time"]:
+            c.create_text(
+                x0 + pad, y + 12,
+                text=f"{view['weekday']}  {view['date']}",
+                fill=ui["muted"], font=ui["font_title"], anchor="w",
+            )
+            colon = ":" if view["colon_on"] else " "
+            c.create_text(cx - 10, y + 54, text=view["hours"], fill=ui["pct"], font=(family, 24, "bold"), anchor="e")
+            c.create_text(cx, y + 50, text=colon, fill=ui["accent"], font=(family, 22, "bold"))
+            c.create_text(cx + 10, y + 54, text=view["minutes"], fill=ui["pct"], font=(family, 24, "bold"), anchor="w")
+            c.create_text(x1 - pad, y + 54, text=view["seconds"], fill=ui["accent"], font=ui["font_title"], anchor="e")
+            y += clock_module.CLOCK_TIME_H
+        if view["show_timer"]:
+            inner = ui.get("inner") or ui["bar_track"]
+            card_y0 = y
+            card_y1 = y + clock_module.CLOCK_TIMER_H - 8
+            if rounded:
+                canvas_round_rect(c, x0 + pad, card_y0, x1 - pad, card_y1, 16, fill=inner, outline="")
+            else:
+                c.create_rectangle(x0 + pad, card_y0, x1 - pad, card_y1, fill=inner, outline=ui["bubble_outline"])
+            mode_y = card_y0 + 10
+            mode_h = 22
+            mid = (x0 + x1) / 2
+            self._draw_clock_button(
+                c, x0 + pad + 10, mode_y, mid - 4, mode_y + mode_h, "闹钟", "tmr_mode_countdown", ui,
+                primary=view["timer_mode"] == "countdown",
+            )
+            self._draw_clock_button(
+                c, mid + 4, mode_y, x1 - pad - 10, mode_y + mode_h, "秒表", "tmr_mode_stopwatch", ui,
+                primary=view["timer_mode"] == "stopwatch",
+            )
+            face_cx = x0 + pad + 40
+            face_cy = card_y0 + 72
+            self._draw_alarm_clock(c, face_cx, face_cy, 28, ui, view)
+            text_x = face_cx + 42
+            c.create_text(text_x, card_y0 + 48, text=view["timer_status"], fill=ui["accent"], font=ui["font"], anchor="w")
+            c.create_text(text_x, card_y0 + 74, text=view["timer_text"], fill=ui["pct"], font=(family, 18, "bold"), anchor="w")
+            if view["timer_mode"] == "countdown":
+                chip_y0 = card_y0 + 98
+                chip_y1 = chip_y0 + 20
+                chip_x = text_x
+                for preset in view["presets"]:
+                    right = chip_x + 34
+                    self._draw_clock_button(
+                        c, chip_x, chip_y0, right, chip_y1, preset["label"],
+                        f"tmr_preset_{preset['minutes']}", ui, primary=bool(preset["selected"]),
+                    )
+                    chip_x = right + 6
+            bw, bh = 54, 22
+            by1 = card_y1 - 10
+            by0 = by1 - bh
+            reset_x1 = x1 - pad - 12
+            reset_x0 = reset_x1 - bw
+            tog_x1 = reset_x0 - 8
+            tog_x0 = tog_x1 - bw
+            self._draw_clock_button(c, tog_x0, by0, tog_x1, by1, view["toggle_label"], "tmr_toggle", ui, primary=True)
+            self._draw_clock_button(c, reset_x0, by0, reset_x1, by1, view["reset_label"], "tmr_reset", ui, primary=False)
+
     def _draw_bubble(self) -> None:
+        self._panel_hits = []
+        panel = self.active_panel()
+        if panel is None:
+            return
         c = self.canvas
         ui = style()
-        rows = self.visible_rows()
-        if not rows:
-            return
         rounded = ui.get("bubble_style") != "classic"
         y0 = ui["bubble_top"]
-        extra = int(ui.get("bubble_bottom") or 0) if rounded else 0
-        y1 = y0 + len(rows) * ui["row_h"] + extra
+        _w, _h, bubble_h = self._layout_metrics()
+        y1 = bubble_h
         x0, x1 = 10, self._win_w - 10
         r = ui.get("radius") or 0
         cx = self._win_w // 2
@@ -2868,6 +3411,14 @@ class UsagePet:
                 cx - 8, y1, cx + 8, y1, cx, y1 + 10,
                 fill=ui["bubble_fill"], outline=ui["bubble_fill"],
             )
+        tabs = len(self.available_panels()) > 1
+        content_top = self._draw_panel_tabs(c, x0, x1, y0, ui) if tabs else y0
+        if panel == "clock":
+            self._draw_clock_panel(c, x0, x1, content_top, ui)
+            return
+        rows = self.visible_rows()
+        if not rows:
+            return
         pools = self._pools()
         pad = 16
         title_x = x0 + pad
@@ -2880,7 +3431,7 @@ class UsagePet:
         period_x = title_x + max_title + 12
         pct_left = pct_right - max_pct
         for i, key in enumerate(rows):
-            top = y0 + i * ui["row_h"]
+            top = content_top + i * ui["row_h"]
             hot = self._hover in (key, "both")
             fill = ui["label_hot"] if hot else ui["label"]
             pool = pools[key]
@@ -2910,14 +3461,15 @@ class UsagePet:
                 font=ui["font_title"],
                 anchor="e",
             )
-            self._bar(
-                title_x,
-                top + 24,
-                (x1 - x0) - pad * 2,
-                12,
-                pool["remaining"],
-                layers=pool.get("layers"),
-            )
+            if pool.get("show_bar", True):
+                self._bar(
+                    title_x,
+                    top + 24,
+                    (x1 - x0) - pad * 2,
+                    12,
+                    pool["remaining"],
+                    layers=pool.get("layers"),
+                )
 
     def _draw_bow(self, x: float, y: float) -> None:
         c = self.canvas
@@ -2963,6 +3515,24 @@ class UsagePet:
 
     def _reset_lines(self) -> list[str]:
         hover = self._hover
+        if hover == "tab:quota":
+            return ["额度板块", "查看 AI 工具剩余额度"]
+        if hover == "tab:clock":
+            return ["时钟板块", "本地时间、秒表和倒计时闹钟"]
+        if hover == "tmr_toggle":
+            state = clock_module.normalize_clock_state(getattr(self, "clock_state", {}))
+            if state.get("timer_ringing"):
+                return ["闹钟", "关掉铃声"]
+            label = "倒计时" if state.get("timer_mode") == "countdown" else "秒表"
+            return [label, "暂停" if state.get("timer_running") else "开始"]
+        if hover == "tmr_reset":
+            return ["闹钟", "归零"]
+        if hover == "tmr_mode_stopwatch":
+            return ["秒表", "正向计时"]
+        if hover == "tmr_mode_countdown":
+            return ["闹钟", "倒计时"]
+        if str(hover or "").startswith("tmr_preset_"):
+            return ["倒计时", f"{str(hover).split('_')[-1]} 分钟"]
         pools = self._pools()
         if hover == "both":
             keys = list(self.visible_rows())

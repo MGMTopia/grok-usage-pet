@@ -26,7 +26,7 @@ network, or read real Grok/Cursor credentials.
 
 ## Modules
 
-- `pet.py`: Tk controller, animation, settings, and quota bubble
+- `pet.py`: Tk controller, animation, settings, and hover panels
 - `fetch_usage.py`: Grok/Cursor/Codex adapters and snapshot aggregation
 - `usage_model.py`: pure status and text formatting
 - `snapshot_store.py`: atomic last-known-good snapshot persistence
@@ -34,6 +34,10 @@ network, or read real Grok/Cursor credentials.
 - `skin_catalog.py`: theme discovery and validation
 - `docs/THEMING.md`: data-driven skin theme tokens and compatibility rules
 - `pet_view_model.py`: pure UI quota mapping
+- `pet_settings.py`: layered `pet_state.json` with v0.3 flat aliases
+- `info_modules.py`: optional module host
+- `quota_module.py`: quota as an optional information module
+- `clock_module.py`: local clock panel and themed alarm
 - `app_update.py`: GitHub Release check and verified portable update
 - `tests/`: offline unit and smoke tests
 

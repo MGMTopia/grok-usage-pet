@@ -70,6 +70,8 @@ def format_remaining_pct(value) -> str:
 
 
 def format_pool_pct(pool: dict) -> str:
+    if pool.get("value_text") is not None:
+        return str(pool.get("value_text") or "")
     layers = pool.get("layers") or []
     if layers:
         if all(layer.get("remaining") is None for layer in layers):
@@ -121,6 +123,11 @@ def pool_tip_lines(pool: dict, *, fetching: bool = False) -> list[str]:
         lines.append(str(pool["period"]))
     layers = pool.get("layers") or []
     empty = "正在获取…" if fetching else "暂时没拿到，正在重试"
+    if pool.get("value_text") is not None:
+        lines.append(str(pool.get("value_text") or ""))
+        for extra in pool.get("extra") or []:
+            lines.append(str(extra))
+        return [line for line in lines if line]
     if layers:
         if not pool_remainings(pool):
             lines.append(empty)

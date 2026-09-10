@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+## 0.3.12 — 2026-09-10
+
+Information modules, clock panel, and settings migration. Git tag: `v0.3.12`.
+
+- Migrate v0.3 flat `pet_state.json` into pet / interaction / modules / system
+  layers while keeping flat aliases so existing installs do not need reconfig.
+- Extract AI quota as the first optional information module, with isolated
+  refresh, permission text, and a host that other local modules can join.
+- Add a local clock module as a separate themed panel from quota, with a
+  switcher, weekday/time face, and a per-theme alarm clock (countdown or
+  stopwatch). Countdown presets are 1/5/10/25 minutes.
+- Put companion interaction ahead of quota: settings and panel tabs list
+  clock before quota, module reactions do not interrupt waving or dragging,
+  and clock/quota chrome share the same type scale and chip contrast.
+
 ## 0.3.11 — 2026-09-05
 
 Desktop shortcut reliability, quota-bar colors, and install FAQ. Git tag: `v0.3.11`.
