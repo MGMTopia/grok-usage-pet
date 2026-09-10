@@ -2,11 +2,52 @@ from __future__ import annotations
 
 import unittest
 import math
+from unittest import mock
 
 import pet
 
 
 class AnimationTimingTests(unittest.TestCase):
+    def test_animation_priority_resolver_matrix(self) -> None:
+        animations = {
+            "idle": [],
+            "running-left": [],
+            "running-right": [],
+            "waving": [],
+            "look": [],
+            "waiting": [],
+            "running": [],
+            "review": [],
+        }
+        resolve = pet.resolve_animation_state
+        self.assertEqual(resolve(dragging=True, drag_dx=-1, oneshot="waving", look_target=4,
+                                 snapshot_present=True, busy=True, bars_visible=True,
+                                 animations=animations), "running-left")
+        self.assertEqual(resolve(dragging=False, drag_dx=0, oneshot="waving", look_target=4,
+                                 snapshot_present=True, busy=True, bars_visible=True,
+                                 animations=animations), "waving")
+        self.assertEqual(resolve(dragging=False, drag_dx=0, oneshot=None, look_target=4,
+                                 snapshot_present=False, busy=True, bars_visible=True,
+                                 animations=animations), "look")
+        self.assertEqual(resolve(dragging=False, drag_dx=0, oneshot=None, look_target=None,
+                                 snapshot_present=False, busy=True, bars_visible=True,
+                                 animations=animations), "waiting")
+        self.assertEqual(resolve(dragging=False, drag_dx=0, oneshot=None, look_target=None,
+                                 snapshot_present=True, busy=True, bars_visible=True,
+                                 animations=animations), "running")
+        self.assertEqual(resolve(dragging=False, drag_dx=0, oneshot=None, look_target=None,
+                                 snapshot_present=True, busy=False, bars_visible=True,
+                                 animations=animations), "review")
+        self.assertEqual(resolve(dragging=False, drag_dx=0, oneshot=None, look_target=None,
+                                 snapshot_present=True, busy=False, bars_visible=False,
+                                 animations=animations), "idle")
+        self.assertEqual(resolve(dragging=False, drag_dx=0, oneshot=None, look_target=4,
+                                 snapshot_present=False, busy=True, bars_visible=True,
+                                 animations=animations, quota_enabled=False), "look")
+        self.assertEqual(resolve(dragging=False, drag_dx=0, oneshot=None, look_target=None,
+                                 snapshot_present=False, busy=True, bars_visible=True,
+                                 animations=animations, quota_enabled=False), "idle")
+
     def test_frame_clock_preserves_remainder(self) -> None:
         steps, remainder = pet._frame_clock_steps(80, 40, 110)
         self.assertEqual(steps, 1)
@@ -163,6 +204,50 @@ class AnimationTimingTests(unittest.TestCase):
         self.assertEqual(instance._current_anim(), "waving")
         instance._oneshot = None
         self.assertEqual(instance._current_anim(), "waiting")
+
+    def test_all_quota_sources_disabled_keeps_desktop_pet_idle(self) -> None:
+        instance = pet.UsagePet.__new__(pet.UsagePet)
+        instance._drag = None
+        instance._oneshot = None
+        instance._looks = []
+        instance._look_target = None
+        instance.snap = None
+        instance._busy = False
+        instance.enabled = {key: False for key in pet.BUBBLE_ROWS}
+        instance._anims = {
+            "idle": [object()],
+            "waiting": [object()],
+            "running": [object()],
+            "review": [object()],
+        }
+        instance._look_index = lambda: None
+        instance.bars_visible = lambda: False
+        self.assertFalse(pet.quota_sources_enabled(instance.enabled))
+        self.assertEqual(instance._current_anim(), "idle")
+
+    def test_all_quota_sources_disabled_skips_refresh_thread(self) -> None:
+        instance = pet.UsagePet.__new__(pet.UsagePet)
+        instance._busy = False
+        instance._closing = False
+        instance.enabled = {key: False for key in pet.BUBBLE_ROWS}
+        with mock.patch.object(pet.threading, "Thread") as thread:
+            instance.refresh_now()
+        thread.assert_not_called()
+
+    def test_module_reaction_does_not_interrupt_waving_or_drag(self) -> None:
+        instance = pet.UsagePet.__new__(pet.UsagePet)
+        instance._anims = {"waving": [object()], "failed": [object()], "waiting": [object()]}
+        instance._anim = "waving"
+        instance._frame = 2
+        instance._frame_acc = 0.0
+        instance._drag = None
+        instance._oneshot = "waving"
+        instance._play_module_reaction("failed")
+        self.assertEqual(instance._oneshot, "waving")
+        instance._oneshot = None
+        instance._drag = (0, 0, 0, 0)
+        instance._play_module_reaction("failed")
+        self.assertIsNone(instance._oneshot)
 
 
 if __name__ == "__main__":

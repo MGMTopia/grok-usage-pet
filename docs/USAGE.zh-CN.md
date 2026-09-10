@@ -6,7 +6,7 @@ Grok Bot、Cursor 和 Codex 的额度与重置时间。它不是 xAI、Cursor �
 
 ## 安装
 
-1. 从 GitHub Releases 下载当前 Windows x64 ZIP（`GrokUsagePet-v0.3.11-Windows-x64.zip`）。
+1. 从 GitHub Releases 下载当前 Windows x64 ZIP（`GrokUsagePet-v0.3.12-Windows-x64.zip`）。
 2. 解压整个文件夹，不要只复制 EXE。
 3. 至少登录一个数据来源：
    - SuperGrok：通过 Grok CLI 完成登录；
@@ -27,6 +27,8 @@ Grok Bot、Cursor 和 Codex 的额度与重置时间。它不是 xAI、Cursor �
 - 拖动宠物：移动位置；
 - 双击：固定或取消固定额度条（仅本次运行，重启后默认收起）；
 - 右键：刷新、设置主题、创建桌面快捷方式或退出。
+- 设置 → 时钟板块 / 额度板块：分开开关。展开后点顶部「时钟 / 额度」切换。
+  时钟含主题闹钟：秒表或倒计时（1/5/10/25 分），时间到会响铃。
 - 设置 → 更新：开关「启动后检查 GitHub 新版本」（默认开，约每天一次）；
   「现在检查」立刻查询；exe 可点「下载并安装」，校验 SHA256 后替换。
   源码运行只会打开发布页，不会改源码目录。不会静默安装。
