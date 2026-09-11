@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from localization import normalize_language
+
 SETTINGS_SCHEMA = 2
 SESSION_LAYOUT_KEYS = ("pinned", "expanded")
 QUOTA_MODULE_ID = "quota"
@@ -95,6 +97,10 @@ def normalize_state(raw: object) -> dict:
         system["check_updates"] = data["check_updates"]
     if "last_update_check" in data:
         system["last_update_check"] = data["last_update_check"]
+    if "language" in data:
+        system["language"] = normalize_language(data["language"])
+    else:
+        system["language"] = normalize_language(system.get("language"))
     panel = data.get("info_panel")
     if panel is None:
         panel = interaction.get("info_panel")
@@ -133,5 +139,6 @@ def normalize_state(raw: object) -> dict:
         out["check_updates"] = system["check_updates"]
     if "last_update_check" in system:
         out["last_update_check"] = system["last_update_check"]
+    out["language"] = system["language"]
     out["info_panel"] = interaction["info_panel"]
     return out

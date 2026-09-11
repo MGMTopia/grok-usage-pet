@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## 0.3.14 — 2026-09-11
+
+Readable settings and complete English UI switching. Git tag: `v0.3.14`.
+
+- Replace the overly tall settings page with a category drop-down that shows
+  one focused section at a time and leaves more room for explanatory copy.
+- Add a persistent Simplified Chinese / English selector with immediate updates
+  for settings, the context menu, usage and clock panels, timer controls,
+  update status, shortcuts, alerts, and uninstall confirmation.
+- Refresh the Chinese and English install, usage, version, and packaging copy.
+
 ## 0.3.13 — 2026-09-11
 
 Make countdown-done obvious. Git tag: `v0.3.13`.
