@@ -1592,6 +1592,8 @@ class UsagePet:
         self.clock_enabled = dict(self.clock_state.get("enabled") or {})
         self.info_panel = normalize_info_panel(load_state().get("info_panel"))
         self._panel_hits: list[tuple[str, int, int, int, int]] = []
+        self._alarm_dlg: tk.Toplevel | None = None
+        self._alarm_pulses = 0
         self._modules = info_modules.default_host()
         self.check_updates = bool(load_state().get("check_updates", True))
         self._update_info: app_update.LatestRelease | None = None
@@ -2234,6 +2236,8 @@ class UsagePet:
         self.clock_enabled = dict(self.clock_state.get("enabled") or self.clock_enabled)
         self.persist()
         self._rebuild_menu()
+        if not self.clock_state.get("timer_ringing"):
+            self._dismiss_alarm_banner()
         self.draw()
 
     def _reset_timer(self) -> None:
@@ -2242,7 +2246,114 @@ class UsagePet:
         self.clock_enabled = dict(self.clock_state.get("enabled") or self.clock_enabled)
         self.persist()
         self._rebuild_menu()
+        self._dismiss_alarm_banner()
         self.draw()
+
+    def _raise_alarm(self) -> None:
+        if getattr(self, "_closing", False):
+            return
+        self._alarm_pulses = 0
+        if "clock" in self.available_panels():
+            self.info_panel = "clock"
+        self._hover_open = True
+        self._apply_layout()
+        if not self._drag:
+            self._play_module_reaction("jumping")
+            if self._oneshot == "jumping":
+                self._alarm_pulses = 1
+        self._play_alarm_sound()
+        self._show_alarm_banner()
+
+    def _play_alarm_sound(self) -> None:
+        def work() -> None:
+            if os.name != "nt":
+                return
+            try:
+                import winsound
+
+                for _ in range(3):
+                    winsound.Beep(880, 160)
+                    time.sleep(0.08)
+                    winsound.Beep(1175, 200)
+                    time.sleep(0.16)
+            except Exception:
+                return
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _show_alarm_banner(self) -> None:
+        if getattr(self, "_closing", False):
+            return
+        existing = getattr(self, "_alarm_dlg", None)
+        if existing is not None:
+            try:
+                if existing.winfo_exists():
+                    existing.lift()
+                    existing.attributes("-topmost", True)
+                    return
+            except tk.TclError:
+                pass
+        ui = style()
+        dlg = tk.Toplevel(self.root)
+        dlg.title("时间到")
+        dlg.attributes("-topmost", True)
+        dlg.resizable(False, False)
+        dlg.configure(bg=ui["settings_bg"])
+        self._apply_app_icon(dlg)
+        tk.Label(
+            dlg,
+            text="倒计时结束",
+            bg=ui["settings_bg"],
+            fg=ui.get("bar_low") or ui["accent"],
+            font=ui["font_title"],
+        ).pack(padx=22, pady=(16, 4))
+        tk.Label(
+            dlg,
+            text="点「关掉」或闹钟上的开始按钮即可停止。",
+            bg=ui["settings_bg"],
+            fg=ui["settings_text"],
+            font=ui["font_ui"],
+            wraplength=260,
+            justify="left",
+        ).pack(padx=22, pady=(0, 10))
+        btn = tk.Label(
+            dlg,
+            text="关掉",
+            bg=ui.get("bar_low") or ui.get("accent", "#c94b4b"),
+            fg="#ffffff",
+            font=ui["font_title"],
+            padx=22,
+            pady=6,
+        )
+        btn.pack(pady=(0, 16))
+
+        def close(_event=None) -> None:
+            self._dismiss_alarm_banner()
+            if clock_module.normalize_clock_state(getattr(self, "clock_state", {})).get("timer_ringing"):
+                self._toggle_timer()
+
+        btn.bind("<Button-1>", close)
+        dlg.bind("<Return>", close)
+        dlg.bind("<Escape>", close)
+        dlg.protocol("WM_DELETE_WINDOW", close)
+        try:
+            dlg.geometry(f"+{self.root.winfo_rootx() + 40}+{self.root.winfo_rooty() - 8}")
+        except tk.TclError:
+            pass
+        self._alarm_dlg = dlg
+        dlg.after(12000, lambda: close() if dlg.winfo_exists() else None)
+
+    def _dismiss_alarm_banner(self) -> None:
+        dlg = getattr(self, "_alarm_dlg", None)
+        self._alarm_dlg = None
+        self._alarm_pulses = 0
+        if dlg is None:
+            return
+        try:
+            if dlg.winfo_exists():
+                dlg.destroy()
+        except tk.TclError:
+            return
 
     def _set_timer_mode(self, mode: str) -> None:
         self._note_activity()
@@ -2439,7 +2550,7 @@ class UsagePet:
         clock_perm = clock_mod.spec.permission_hint() if clock_mod is not None else ""
         hint(
             "本地功能，不需要账号。展开后点顶部「时钟 / 额度」切换。"
-            "闹钟按主题绘制，可倒计时或秒表。"
+            "闹钟按主题绘制，可倒计时或秒表。时间到会弹窗、跳跃，并响一声短提示音。"
             + (f" {clock_perm}。" if clock_perm else "")
         )
 
@@ -2819,6 +2930,7 @@ class UsagePet:
 
     def quit(self, *, keep_data: bool = True, mark_dismissed: bool = True) -> None:
         self._closing = True
+        self._dismiss_alarm_banner()
         if keep_data and not self._preview_mode:
             self.persist()
             if mark_dismissed:
@@ -3101,8 +3213,14 @@ class UsagePet:
             was_ringing = bool(clock_module.normalize_clock_state(getattr(self, "clock_state", {})).get("timer_ringing"))
             self.clock_state = clock_module.advance_timer(getattr(self, "clock_state", {}), time.time())
             if self.clock_state.get("timer_ringing") and not was_ringing:
-                self._play_module_reaction("waving")
+                self._raise_alarm()
                 self.persist()
+            elif self.clock_state.get("timer_ringing") and not self._drag:
+                pulses = getattr(self, "_alarm_pulses", 0)
+                if self._oneshot is None and pulses < 4:
+                    self._play_module_reaction("jumping")
+                    if self._oneshot == "jumping":
+                        self._alarm_pulses = pulses + 1
         self.draw()
         self.root.after(TICK_MS, self.animate)
         host = getattr(self, "_modules", None)
@@ -3195,7 +3313,7 @@ class UsagePet:
 
     def _draw_alarm_clock(self, c, cx: float, cy: float, radius: float, ui: dict, view: dict) -> None:
         tick = getattr(self, "_tick", 0)
-        shake = math.sin(tick / 2.0) * 2.4 if view.get("timer_ringing") else 0.0
+        shake = math.sin(tick / 1.6) * 6.0 if view.get("timer_ringing") else 0.0
         cx += shake
         style_key = ui.get("decoration") or "none"
         accent = ui["accent"]

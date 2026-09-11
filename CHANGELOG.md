@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.3.13 — 2026-09-11
+
+Make countdown-done obvious. Git tag: `v0.3.13`.
+
+- Switch to the clock panel when a countdown finishes, show a topmost
+  "时间到" banner, play a short beep, jump up to four times, and shake the
+  themed alarm until dismissed. Waving and dragging still beat the jump.
+- Document the clock alarm on the README landing pages and in the Chinese
+  usage notes.
+
 ## 0.3.12 — 2026-09-10
 
 Information modules, clock panel, and settings migration. Git tag: `v0.3.12`.

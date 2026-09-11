@@ -249,6 +249,27 @@ class AnimationTimingTests(unittest.TestCase):
         instance._play_module_reaction("failed")
         self.assertIsNone(instance._oneshot)
 
+    def test_raise_alarm_does_not_interrupt_waving_or_drag(self) -> None:
+        instance = pet.UsagePet.__new__(pet.UsagePet)
+        instance._anims = {"waving": [object()], "jumping": [object()]}
+        instance._drag = None
+        instance._oneshot = "waving"
+        instance._closing = False
+        instance._hover_open = False
+        instance.info_panel = "quota"
+        instance.available_panels = lambda: ("clock", "quota")
+        instance._apply_layout = lambda: None
+        instance._play_alarm_sound = lambda: None
+        instance._show_alarm_banner = lambda: None
+        instance._raise_alarm()
+        self.assertEqual(instance._oneshot, "waving")
+        self.assertEqual(instance.info_panel, "clock")
+        self.assertTrue(instance._hover_open)
+        instance._oneshot = None
+        instance._drag = (0, 0, 0, 0)
+        instance._raise_alarm()
+        self.assertIsNone(instance._oneshot)
+
 
 if __name__ == "__main__":
     unittest.main()
