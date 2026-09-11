@@ -13,9 +13,10 @@ POOL_META = {
 }
 
 
-def format_reset(iso: str | None) -> tuple[str, str]:
+def format_reset(iso: str | None, *, language: str = "zh-CN") -> tuple[str, str]:
+    english = str(language).lower().startswith("en")
     if not iso:
-        return "到期时间未知", ""
+        return ("Reset time unavailable" if english else "到期时间未知"), ""
     try:
         dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
     except ValueError:
@@ -27,15 +28,17 @@ def format_reset(iso: str | None) -> tuple[str, str]:
     hours, remainder = divmod(remainder, 3600)
     minutes = remainder // 60
     if days:
-        left = f"还剩 {days} 天 {hours} 小时"
+        left = f"{days}d {hours}h remaining" if english else f"还剩 {days} 天 {hours} 小时"
     elif hours:
-        left = f"还剩 {hours} 小时 {minutes} 分"
+        left = f"{hours}h {minutes}m remaining" if english else f"还剩 {hours} 小时 {minutes} 分"
     else:
-        left = f"还剩 {minutes} 分钟"
-    return f"重置 {local.strftime('%m月%d日 %H:%M')}", left
+        left = f"{minutes}m remaining" if english else f"还剩 {minutes} 分钟"
+    stamp = local.strftime("%b %d %H:%M") if english else local.strftime("%m月%d日 %H:%M")
+    return (f"Resets {stamp}" if english else f"重置 {stamp}"), left
 
 
-def cursor_extra(monthly: dict, key: str) -> list[str]:
+def cursor_extra(monthly: dict, key: str, *, language: str = "zh-CN") -> list[str]:
+    english = str(language).lower().startswith("en")
     lines: list[str] = []
     limit = monthly.get("included_limit_cents")
     used = monthly.get("included_used_cents")
@@ -43,10 +46,10 @@ def cursor_extra(monthly: dict, key: str) -> list[str]:
         try:
             used_value = float(used or 0) / 100
             limit_value = float(limit) / 100
-            lines.append(f"套餐内 ${used_value:.2f} / ${limit_value:.2f}")
+            lines.append((f"Included ${used_value:.2f} / ${limit_value:.2f}") if english else f"套餐内 ${used_value:.2f} / ${limit_value:.2f}")
         except (TypeError, ValueError):
             pass
-    lines.append("按量付费 开" if monthly.get("on_demand_allowed") else "按量付费 关")
+    lines.append(("On-demand enabled" if monthly.get("on_demand_allowed") else "On-demand disabled") if english else ("按量付费 开" if monthly.get("on_demand_allowed") else "按量付费 关"))
     return [line for line in lines if line]
 
 
@@ -117,12 +120,13 @@ def _codex_pool_extra(codex: dict) -> list[str]:
     return [line for line in lines if line]
 
 
-def pool_tip_lines(pool: dict, *, fetching: bool = False) -> list[str]:
+def pool_tip_lines(pool: dict, *, fetching: bool = False, language: str = "zh-CN") -> list[str]:
+    english = str(language).lower().startswith("en")
     lines = [str(pool.get("title") or "")]
     if pool.get("period"):
         lines.append(str(pool["period"]))
     layers = pool.get("layers") or []
-    empty = "正在获取…" if fetching else "暂时没拿到，正在重试"
+    empty = ("Fetching…" if fetching else "Unavailable; retrying") if english else ("正在获取…" if fetching else "暂时没拿到，正在重试")
     if pool.get("value_text") is not None:
         lines.append(str(pool.get("value_text") or ""))
         for extra in pool.get("extra") or []:
@@ -138,7 +142,7 @@ def pool_tip_lines(pool: dict, *, fetching: bool = False) -> list[str]:
                 lines.append(f"{layer['label']}  {format_remaining_pct(rem)}")
                 if rem is None:
                     continue
-                when, left = format_reset(layer.get("reset"))
+                when, left = format_reset(layer.get("reset"), language=language)
                 lines.append(when)
                 if left:
                     lines.append(left)
@@ -146,7 +150,7 @@ def pool_tip_lines(pool: dict, *, fetching: bool = False) -> list[str]:
         lines.append(empty)
     else:
         lines.append(format_remaining_pct(pool.get("remaining")))
-        when, left = format_reset(pool.get("reset"))
+        when, left = format_reset(pool.get("reset"), language=language)
         lines.append(when)
         if left:
             lines.append(left)
@@ -155,55 +159,63 @@ def pool_tip_lines(pool: dict, *, fetching: bool = False) -> list[str]:
     return [line for line in lines if line]
 
 
-def build_pools(snap: dict | None) -> dict:
+def build_pools(snap: dict | None, *, language: str = "zh-CN") -> dict:
+    english = str(language).lower().startswith("en")
+    meta = POOL_META if not english else {
+        "sg": {"title": "SuperGrok", "tag": "Weekly", "period": "Weekly allowance", "cover": "Shared by Chat / Build / Imagine"},
+        "bot": {"title": "Grok Bot", "tag": "Weekly", "period": "Weekly allowance", "cover": "Separate pool for the Cursor account"},
+        "cm": {"title": "Cursor models", "tag": "Monthly", "period": "Monthly allowance", "cover": "Composer / built-in Cursor models"},
+        "om": {"title": "Other models", "tag": "Monthly", "period": "Monthly allowance", "cover": "GPT / Claude and others"},
+        "cx": {"title": "Codex", "tag": "5h + weekly", "period": "5-hour + weekly allowance", "cover": "5-hour window plus weekly allowance"},
+    }
     data = snap or {}
     cursor = data.get("cursor") or {}
     monthly = cursor.get("cursor_monthly") or {}
     codex = data.get("codex") or {}
     pools = {
         "sg": {
-            "title": POOL_META["sg"]["title"],
-            "tag": POOL_META["sg"]["tag"],
-            "period": POOL_META["sg"]["period"],
+            "title": meta["sg"]["title"],
+            "tag": meta["sg"]["tag"],
+            "period": meta["sg"]["period"],
             "remaining": data.get("remaining_percent"),
             "reset": (data.get("period") or {}).get("end"),
-            "extra": [POOL_META["sg"]["cover"]],
+            "extra": [meta["sg"]["cover"]],
         },
         "bot": {
-            "title": POOL_META["bot"]["title"],
-            "tag": POOL_META["bot"]["tag"],
-            "period": POOL_META["bot"]["period"],
+            "title": meta["bot"]["title"],
+            "tag": meta["bot"]["tag"],
+            "period": meta["bot"]["period"],
             "remaining": (cursor.get("grok_bot") or {}).get("remaining_percent"),
             "reset": (cursor.get("grok_bot") or {}).get("resets_at"),
-            "extra": [POOL_META["bot"]["cover"]],
+            "extra": [meta["bot"]["cover"]],
         },
         "cm": {
-            "title": POOL_META["cm"]["title"],
-            "tag": POOL_META["cm"]["tag"],
-            "period": POOL_META["cm"]["period"],
+            "title": meta["cm"]["title"],
+            "tag": meta["cm"]["tag"],
+            "period": meta["cm"]["period"],
             "remaining": (monthly.get("cursor_models") or {}).get("remaining_percent"),
             "reset": monthly.get("billing_cycle_end"),
-            "extra": [line for line in (POOL_META["cm"]["cover"], *cursor_extra(monthly, "cursor_models")) if line],
+            "extra": [line for line in (meta["cm"]["cover"], *cursor_extra(monthly, "cursor_models", language=language)) if line],
         },
         "om": {
-            "title": POOL_META["om"]["title"],
-            "tag": POOL_META["om"]["tag"],
-            "period": POOL_META["om"]["period"],
+            "title": meta["om"]["title"],
+            "tag": meta["om"]["tag"],
+            "period": meta["om"]["period"],
             "remaining": (monthly.get("other_models") or {}).get("remaining_percent"),
             "reset": monthly.get("billing_cycle_end"),
-            "extra": [line for line in (POOL_META["om"]["cover"], *cursor_extra(monthly, "other_models")) if line],
+            "extra": [line for line in (meta["om"]["cover"], *cursor_extra(monthly, "other_models", language=language)) if line],
         },
         "cx": {
-            "title": POOL_META["cx"]["title"],
-            "tag": POOL_META["cx"]["tag"],
-            "period": POOL_META["cx"]["period"],
+            "title": meta["cx"]["title"],
+            "tag": meta["cx"]["tag"],
+            "period": meta["cx"]["period"],
             "remaining": None,
             "reset": None,
             "layers": [
-                _codex_window_layer(codex, "primary", label="5小时", tone="light"),
-                _codex_window_layer(codex, "secondary", label="周额度", tone="dark"),
+                _codex_window_layer(codex, "primary", label="5 hours" if english else "5小时", tone="light"),
+                _codex_window_layer(codex, "secondary", label="Weekly" if english else "周额度", tone="dark"),
             ],
-            "extra": _codex_pool_extra(codex),
+            "extra": ([meta["cx"]["cover"], "Read-only local ChatGPT plan session"] if english else _codex_pool_extra(codex)),
         },
     }
     cx_vals = pool_remainings(pools["cx"])

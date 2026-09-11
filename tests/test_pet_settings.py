@@ -86,6 +86,12 @@ class SettingsMigrationTests(unittest.TestCase):
         state = normalize_state({"skin": "original", "custom_note": "keep"})
         self.assertEqual(state["custom_note"], "keep")
 
+    def test_language_is_normalized_and_persisted_in_system_layer(self) -> None:
+        state = normalize_state({"language": "en-US"})
+        self.assertEqual(state["language"], "en")
+        self.assertEqual(state["system"]["language"], "en")
+        self.assertEqual(normalize_state({})["language"], "zh-CN")
+
     def test_normalize_enabled_matches_legacy_defaults(self) -> None:
         self.assertEqual(normalize_enabled(None), dict(DEFAULT_QUOTA_ENABLED))
         self.assertEqual(normalize_enabled({"sg": False})["sg"], False)

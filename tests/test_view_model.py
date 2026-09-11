@@ -15,6 +15,12 @@ from pet_view_model import (
 
 
 class PetViewModelTests(unittest.TestCase):
+    def test_english_pool_copy_is_complete(self) -> None:
+        pools = build_pools({}, language="en")
+        self.assertEqual(pools["cm"]["title"], "Cursor models")
+        self.assertEqual(pools["cx"]["layers"][0]["label"], "5 hours")
+        self.assertIn("Fetching…", pool_tip_lines(pools["sg"], fetching=True, language="en"))
+
     def test_build_pools_handles_empty_snapshot(self) -> None:
         pools = build_pools(None)
         self.assertEqual(set(pools), {"sg", "bot", "cm", "om", "cx"})

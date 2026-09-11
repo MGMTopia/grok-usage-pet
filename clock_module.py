@@ -180,7 +180,9 @@ def clock_panel_view(
     *,
     now: float,
     moment: datetime | None = None,
+    language: str = "zh-CN",
 ) -> dict:
+    english = str(language).lower().startswith("en")
     when = moment or datetime.fromtimestamp(now)
     state = normalize_clock_state(clock)
     elapsed = timer_elapsed_ms(state, now)
@@ -190,35 +192,35 @@ def clock_panel_view(
     remaining = countdown_remaining_ms(state, now) if countdown else 0.0
     duration = float(state["countdown_ms"])
     if ringing:
-        status = "时间到"
+        status = "Time's up" if english else "时间到"
         display_ms = 0.0 if countdown else elapsed
-        toggle = "关掉"
+        toggle = "Stop" if english else "关掉"
     elif running:
-        status = "倒计时中" if countdown else "计时中"
+        status = ("Counting down" if countdown else "Timing") if english else ("倒计时中" if countdown else "计时中")
         display_ms = remaining if countdown else elapsed
-        toggle = "暂停"
+        toggle = "Pause" if english else "暂停"
     elif (countdown and remaining < duration) or (not countdown and elapsed > 0):
-        status = "已暂停"
+        status = "Paused" if english else "已暂停"
         display_ms = remaining if countdown else elapsed
-        toggle = "继续"
+        toggle = "Resume" if english else "继续"
     else:
-        status = "待开始"
+        status = "Ready" if english else "待开始"
         display_ms = remaining if countdown else elapsed
-        toggle = "开始"
+        toggle = "Start" if english else "开始"
     hour_deg, minute_deg, second_deg = alarm_hand_angles(elapsed, remaining, countdown=countdown)
     values = enabled or {}
     return {
         "show_time": bool(values.get("time")),
         "show_timer": bool(values.get("timer")),
-        "weekday": WEEKDAYS[when.weekday()],
-        "date": f"{when.month}月{when.day}日",
+        "weekday": when.strftime("%a") if english else WEEKDAYS[when.weekday()],
+        "date": when.strftime("%b %d") if english else f"{when.month}月{when.day}日",
         "hours": f"{when.hour:02d}",
         "minutes": f"{when.minute:02d}",
         "seconds": f"{when.second:02d}",
         "colon_on": int(now) % 2 == 0,
-        "caption": "本地时间",
+        "caption": "Local time" if english else "本地时间",
         "timer_mode": state["timer_mode"],
-        "timer_caption": "倒计时" if countdown else "秒表",
+        "timer_caption": ("Countdown" if countdown else "Stopwatch") if english else ("倒计时" if countdown else "秒表"),
         "timer_status": status,
         "timer_text": format_elapsed(display_ms),
         "timer_running": running,
@@ -231,11 +233,11 @@ def clock_panel_view(
         "minute_deg": minute_deg,
         "second_deg": second_deg,
         "presets": tuple(
-            {"minutes": mins, "label": f"{mins}分", "selected": int(duration) == mins * 60_000}
+            {"minutes": mins, "label": f"{mins}m" if english else f"{mins}分", "selected": int(duration) == mins * 60_000}
             for mins in COUNTDOWN_PRESETS
         ),
         "toggle_label": toggle,
-        "reset_label": "归零",
+        "reset_label": "Reset" if english else "归零",
     }
 
 

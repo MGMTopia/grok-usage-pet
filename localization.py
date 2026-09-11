@@ -1,0 +1,107 @@
+"""Small, dependency-free UI localization catalog."""
+
+from __future__ import annotations
+
+SUPPORTED_LANGUAGES = ("zh-CN", "en")
+LANGUAGE_NAMES = {"zh-CN": "简体中文", "en": "English"}
+
+
+def normalize_language(value: object) -> str:
+    text = str(value or "").strip().lower().replace("_", "-")
+    if text.startswith("en"):
+        return "en"
+    return "zh-CN"
+
+
+_EN = {
+    "settings.title": "Settings · v{version}",
+    "settings.language": "Language",
+    "settings.category": "Settings category",
+    "section.appearance": "Appearance",
+    "section.clock": "Clock panel",
+    "section.quota": "Usage panel",
+    "section.startup": "App startup",
+    "section.update": "Updates",
+    "section.uninstall": "Uninstall",
+    "skin.ready": "Ready",
+    "skin.missing": "Assets missing",
+    "skin.hint": "Appearance controls the character, colors, and decoration. Original uses tech blue; Megumi Kato uses warm rounded styling.",
+    "clock.time": "Show local time",
+    "clock.timer": "Alarm and stopwatch",
+    "clock.hint": "Local-only and account-free. Expand the pet and use the Clock / Usage tabs. The themed timer supports countdown and stopwatch modes. When time is up, it shows an alert, jumps, and plays a short sound.",
+    "quota.hint": "Optional information module. Disable every source to hide this panel while continuing to use the desktop pet.",
+    "startup.grok": "Start with Grok Build",
+    "startup.cursor": "Start with Cursor",
+    "startup.hint": "The pet appears a few seconds after Grok or Cursor opens. After Windows sign-in, a background watcher waits for either app.",
+    "update.check_start": "Check GitHub for updates after startup",
+    "update.check_now": "Check now",
+    "update.install": "Download and install",
+    "update.hint": "Downloads only the official GitHub Release ZIP and verifies its SHA-256 before replacement. Installation is never silent. Source runs open the release page and do not modify the source folder.",
+    "uninstall.action": "Clear local data and exit",
+    "uninstall.hint": "Removes startup integration, desktop shortcuts, and usage snapshots, then exits. Grok, Cursor, and Codex sessions and the program folder are left untouched.",
+    "menu.pin": "Pin / unpin panel",
+    "menu.settings": "Settings…",
+    "menu.to_clock": "Switch to clock",
+    "menu.to_quota": "Switch to usage",
+    "menu.stop_alarm": "Stop alarm",
+    "menu.pause_timer": "Pause timer",
+    "menu.start_timer": "Start timer",
+    "menu.reset_timer": "Reset timer",
+    "menu.refresh": "Refresh usage",
+    "menu.shortcut": "Create desktop shortcut",
+    "menu.data": "Open data folder",
+    "menu.exit": "Exit pet",
+    "tab.clock": "Clock",
+    "tab.quota": "Usage",
+    "timer.alarm": "Alarm",
+    "timer.stopwatch": "Stopwatch",
+    "timer.done": "Time's up",
+    "timer.done_body": "Countdown finished",
+    "timer.done_hint": "Select Stop or use the timer's start button to silence it.",
+    "timer.stop": "Stop",
+    "timer.reset": "Reset",
+    "timer.start": "Start",
+    "timer.pause": "Pause",
+    "timer.resume": "Resume",
+    "timer.waiting": "Ready",
+    "timer.running_countdown": "Counting down",
+    "timer.running_stopwatch": "Timing",
+    "timer.paused": "Paused",
+    "timer.local_time": "Local time",
+    "timer.local": "Local",
+    "timer.now": "Now",
+    "timer.time": "Time",
+    "timer.timing": "Timer",
+    "timer.minute": "{minutes}m",
+    "update.busy": "Checking or downloading…",
+    "update.current": "Current version: v{version}. You'll be notified of updates; installation requires confirmation.",
+    "update.found_install": "Version v{version} is available and ready to install.",
+    "update.found_page": "Version v{version} is available. Open the release page to download it.",
+    "update.latest": "You're up to date (v{version}).",
+    "update.check_first": "Check for updates first.",
+    "update.source_opened": "Source runs do not modify files. The GitHub Releases page is open.",
+    "update.check_failed": "Update check failed: {error}",
+    "update.new": "Version v{version} is available.",
+    "update.install_failed": "Could not start installation: {error}",
+    "update.download_failed": "Download failed: {error}",
+    "update.invalid": "The update state is invalid.",
+    "update.installing": "The pet will exit and install the update.",
+    "generic.ok": "OK",
+    "generic.cancel": "Cancel",
+    "generic.notice": "Notice",
+    "startup.grok_failed": "Could not change Grok startup: {error}",
+    "startup.cursor_failed": "Could not change Cursor startup: {error}",
+    "shortcut.created": "Shortcut:\n{path}",
+    "shortcut.fallback": "Desktop access was blocked, so the shortcut was saved in the program folder:\n{path}\nDrag it to the desktop, or allow this app to access the desktop in Windows Security.",
+    "shortcut.failed": "Could not create shortcut: {error}",
+    "purge.title": "Clear local data",
+    "purge.body_portable": "This removes startup integration, desktop shortcuts, and usage snapshots, then exits the pet.\nGrok, Cursor, and Codex sessions remain signed in.\nThe complete portable program folder will be removed after exit.",
+    "purge.body_source": "This removes startup integration, desktop shortcuts, and usage snapshots, then exits the pet.\nGrok, Cursor, and Codex sessions remain signed in.\nDelete source clones or unverified folders yourself.",
+    "purge.full": "Uninstall completely and exit",
+    "purge.clear": "Clear and exit",
+}
+
+
+def tr(language: object, key: str, zh: str, **values: object) -> str:
+    template = _EN.get(key, zh) if normalize_language(language) == "en" else zh
+    return template.format(**values) if values else template

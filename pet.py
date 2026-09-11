@@ -21,6 +21,7 @@ import webbrowser
 from pathlib import Path
 from tkinter import Menu
 from tkinter import font as tkfont
+from tkinter import ttk
 
 if getattr(sys, "frozen", False):
     sys.path.insert(0, str(Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))))
@@ -33,6 +34,7 @@ import skin_catalog
 import app_update
 import info_modules
 import clock_module
+from localization import LANGUAGE_NAMES, SUPPORTED_LANGUAGES, normalize_language, tr
 from app_version import APP_VERSION, INSTALL_MARKER_NAME, INSTALL_MARKER_VALUE
 from snapshot_store import write_text_atomic
 from pet_settings import (
@@ -1591,6 +1593,7 @@ class UsagePet:
         self.clock_state = load_clock_state()
         self.clock_enabled = dict(self.clock_state.get("enabled") or {})
         self.info_panel = normalize_info_panel(load_state().get("info_panel"))
+        self.language = normalize_language(load_state().get("language"))
         self._panel_hits: list[tuple[str, int, int, int, int]] = []
         self._alarm_dlg: tk.Toplevel | None = None
         self._alarm_pulses = 0
@@ -2009,6 +2012,7 @@ class UsagePet:
             "skin": self.skin_id,
             "check_updates": self.check_updates,
             "info_panel": self.active_panel() or "quota",
+            "language": self.language,
             "modules": {
                 "quota": {"enabled": dict(self.enabled)},
                 "clock": clock,
@@ -2023,6 +2027,7 @@ class UsagePet:
                     "skin": self.skin_id,
                     "check_updates": self.check_updates,
                     "info_panel": payload.get("info_panel") or "quota",
+                    "language": self.language,
                     "modules": payload["modules"],
                 }
             )
@@ -2205,27 +2210,30 @@ class UsagePet:
             return
         try:
             menu.delete(0, "end")
-            menu.add_command(label="固定 / 取消固定面板", command=self.toggle_expand)
-            menu.add_command(label="设置…", command=self.open_settings)
+            lang = getattr(self, "language", "zh-CN")
+            _t = lambda key, zh, **values: tr(lang, key, zh, **values)
+            menu.add_command(label=_t("menu.pin", "固定 / 取消固定面板"), command=self.toggle_expand)
+            menu.add_command(label=_t("menu.settings", "设置…"), command=self.open_settings)
             available = self.available_panels()
             if "quota" in available and "clock" in available:
                 other = "clock" if self.active_panel() == "quota" else "quota"
                 menu.add_command(
-                    label="切换到时钟" if other == "clock" else "切换到额度",
+                    label=_t("menu.to_clock", "切换到时钟") if other == "clock" else _t("menu.to_quota", "切换到额度"),
                     command=lambda p=other: self._set_info_panel(p),
                 )
             if getattr(self, "clock_enabled", {}).get("timer") and self.active_panel() == "clock":
                 state = clock_module.normalize_clock_state(getattr(self, "clock_state", {}))
                 running = bool(state.get("timer_running"))
                 ringing = bool(state.get("timer_ringing"))
-                menu.add_command(label="关掉铃声" if ringing else ("暂停闹钟" if running else "开始闹钟"), command=self._toggle_timer)
-                menu.add_command(label="计时归零", command=self._reset_timer)
+                timer_label = _t("menu.stop_alarm", "关掉铃声") if ringing else (_t("menu.pause_timer", "暂停闹钟") if running else _t("menu.start_timer", "开始闹钟"))
+                menu.add_command(label=timer_label, command=self._toggle_timer)
+                menu.add_command(label=_t("menu.reset_timer", "计时归零"), command=self._reset_timer)
             if quota_sources_enabled(getattr(self, "enabled", DEFAULT_ENABLED)):
-                menu.add_command(label="刷新额度", command=self.refresh_now)
-            menu.add_command(label="创建桌面快捷方式", command=self.install_shortcut)
+                menu.add_command(label=_t("menu.refresh", "刷新额度"), command=self.refresh_now)
+            menu.add_command(label=_t("menu.shortcut", "创建桌面快捷方式"), command=self.install_shortcut)
             menu.add_separator()
-            menu.add_command(label="打开数据目录", command=self.open_data_dir)
-            menu.add_command(label="退出宠物", command=self.quit)
+            menu.add_command(label=_t("menu.data", "打开数据目录"), command=self.open_data_dir)
+            menu.add_command(label=_t("menu.exit", "退出宠物"), command=self.quit)
         except tk.TclError:
             return
 
@@ -2295,21 +2303,21 @@ class UsagePet:
                 pass
         ui = style()
         dlg = tk.Toplevel(self.root)
-        dlg.title("时间到")
+        dlg.title(tr(self.language, "timer.done", "时间到"))
         dlg.attributes("-topmost", True)
         dlg.resizable(False, False)
         dlg.configure(bg=ui["settings_bg"])
         self._apply_app_icon(dlg)
         tk.Label(
             dlg,
-            text="倒计时结束",
+            text=tr(self.language, "timer.done_body", "倒计时结束"),
             bg=ui["settings_bg"],
             fg=ui.get("bar_low") or ui["accent"],
             font=ui["font_title"],
         ).pack(padx=22, pady=(16, 4))
         tk.Label(
             dlg,
-            text="点「关掉」或闹钟上的开始按钮即可停止。",
+            text=tr(self.language, "timer.done_hint", "点「关掉」或闹钟上的开始按钮即可停止。"),
             bg=ui["settings_bg"],
             fg=ui["settings_text"],
             font=ui["font_ui"],
@@ -2318,7 +2326,7 @@ class UsagePet:
         ).pack(padx=22, pady=(0, 10))
         btn = tk.Label(
             dlg,
-            text="关掉",
+            text=tr(self.language, "timer.stop", "关掉"),
             bg=ui.get("bar_low") or ui.get("accent", "#c94b4b"),
             fg="#ffffff",
             font=ui["font_title"],
@@ -2412,36 +2420,65 @@ class UsagePet:
             self._settings.focus_force()
             return
         ui = style()
+        lang = self.language
+        _t = lambda key, zh, **values: tr(lang, key, zh, **values)
         win = tk.Toplevel(self.root)
         self._settings = win
-        win.title(f"设置 · v{APP_VERSION}")
+        win.title(_t("settings.title", f"设置 · v{APP_VERSION}", version=APP_VERSION))
         self._apply_app_icon(win)
         win.attributes("-topmost", True)
         win.resizable(False, False)
         bg = ui["settings_bg"]
         card_bg = ui.get("inner", "#ffffff")
         win.configure(bg=bg)
-        wrap = 300
+        wrap = 420
         self._settings_paints: list = []
         self._skin_chips: dict[str, tk.Frame] = {}
         self._skin_var = tk.StringVar(value=self.skin_id)
 
         shell = tk.Frame(win, bg=bg)
-        shell.pack(fill="both", expand=True, padx=16, pady=(8, 16))
+        shell.pack(fill="both", expand=True, padx=18, pady=(14, 18))
+
+        controls = tk.Frame(shell, bg=bg)
+        controls.pack(fill="x", pady=(0, 12))
+        tk.Label(controls, text=_t("settings.language", "语言"), bg=bg, fg=ui["settings_fg"], font=ui["font_title"]).grid(row=0, column=0, sticky="w", padx=(0, 10), pady=(0, 8))
+        language_var = tk.StringVar(value=LANGUAGE_NAMES[self.language])
+        language_box = ttk.Combobox(
+            controls,
+            textvariable=language_var,
+            values=[LANGUAGE_NAMES[key] for key in SUPPORTED_LANGUAGES],
+            state="readonly",
+            width=20,
+        )
+        language_box.grid(row=0, column=1, sticky="ew", pady=(0, 8))
+        tk.Label(controls, text=_t("settings.category", "设置分类"), bg=bg, fg=ui["settings_fg"], font=ui["font_title"]).grid(row=1, column=0, sticky="w", padx=(0, 10))
+        category_var = tk.StringVar()
+        category_box = ttk.Combobox(controls, textvariable=category_var, state="readonly", width=20)
+        category_box.grid(row=1, column=1, sticky="ew")
+        controls.columnconfigure(1, weight=1)
+
+        pages_host = tk.Frame(shell, bg=bg, width=440, height=330)
+        pages_host.pack(fill="both", expand=True)
+        pages_host.pack_propagate(False)
+        pages: list[tuple[str, tk.Frame]] = []
+        current_page: tk.Frame | None = None
 
         def heading(text: str) -> None:
+            nonlocal current_page
+            current_page = tk.Frame(pages_host, bg=bg)
+            pages.append((text, current_page))
             tk.Label(
-                shell,
+                current_page,
                 text=text,
                 bg=bg,
                 fg=ui["settings_fg"],
                 font=ui["font_title"],
                 anchor="w",
-            ).pack(fill="x", pady=(12, 6))
+            ).pack(fill="x", pady=(2, 8))
 
         def hint(text: str) -> None:
             tk.Label(
-                shell,
+                current_page,
                 text=text,
                 bg=bg,
                 fg=ui["settings_muted"],
@@ -2453,7 +2490,7 @@ class UsagePet:
 
         def card() -> tk.Frame:
             wrap_fr = tk.Frame(
-                shell,
+                current_page,
                 bg=card_bg,
                 highlightbackground=ui["bubble_outline"],
                 highlightcolor=ui["bubble_outline"],
@@ -2502,8 +2539,8 @@ class UsagePet:
             self._settings_paints.append(paint)
             paint()
 
-        heading("形象")
-        chips = tk.Frame(shell, bg=bg)
+        heading(_t("section.appearance", "形象"))
+        chips = tk.Frame(current_page, bg=bg)
         chips.pack(fill="x")
         skins = list_skins()
         for i, spec in enumerate(skins):
@@ -2521,7 +2558,7 @@ class UsagePet:
             name.pack(anchor="w", padx=10, pady=(8, 0))
             sub = tk.Label(
                 chip,
-                text="已就绪" if ready else "待补素材",
+                text=_t("skin.ready", "已就绪") if ready else _t("skin.missing", "待补素材"),
                 bg=card_bg,
                 fg=ui["accent"] if ready else ui["settings_muted"],
                 font=ui["font"],
@@ -2536,51 +2573,45 @@ class UsagePet:
             bind(sub)
             self._skin_chips[sid] = chip
         self._paint_skin_chips()
-        hint("形象决定角色、配色和装饰。Original 是科技蓝，加藤惠是暖色圆角。")
+        hint(_t("skin.hint", "形象决定角色、配色和装饰。Original 是科技蓝，加藤惠是暖色圆角。"))
 
-        heading("时钟板块")
+        heading(_t("section.clock", "时钟板块"))
         inner = card()
         self._clock_vars = {}
-        clock_labels = {"time": "显示时间", "timer": "闹钟与秒表"}
+        clock_labels = {"time": _t("clock.time", "显示时间"), "timer": _t("clock.timer", "闹钟与秒表")}
         for key in ("time", "timer"):
             var = tk.BooleanVar(value=self.clock_enabled.get(key, True))
             self._clock_vars[key] = var
             add_switch(inner, clock_labels[key], var, lambda k=key: self._on_toggle_clock(k))
         clock_mod = self._modules.get("clock")
         clock_perm = clock_mod.spec.permission_hint() if clock_mod is not None else ""
-        hint(
-            "本地功能，不需要账号。展开后点顶部「时钟 / 额度」切换。"
-            "闹钟按主题绘制，可倒计时或秒表。时间到会弹窗、跳跃，并响一声短提示音。"
-            + (f" {clock_perm}。" if clock_perm else "")
-        )
+        hint(_t("clock.hint", "本地功能，不需要账号。展开后点顶部「时钟 / 额度」切换。闹钟按主题绘制，可倒计时或秒表。时间到会弹窗、跳跃，并响一声短提示音。") + (f" {clock_perm}。" if clock_perm and lang == "zh-CN" else ""))
 
-        heading("额度板块")
+        heading(_t("section.quota", "额度板块"))
         inner = card()
         self._enabled_vars = {}
         for key in BUBBLE_ROWS:
             var = tk.BooleanVar(value=self.enabled.get(key, True))
             self._enabled_vars[key] = var
             meta = POOL_META[key]
-            add_switch(inner, f"{meta['title']}  {meta['tag']}", var, lambda k=key: self._on_toggle(k))
+            tag = meta['tag'] if lang == "zh-CN" else {"sg": "Weekly", "bot": "Weekly", "cm": "Monthly", "om": "Monthly", "cx": "5h + weekly"}.get(key, meta['tag'])
+            add_switch(inner, f"{meta['title']}  {tag}", var, lambda k=key: self._on_toggle(k))
         quota_mod = self._modules.get("quota")
         perm = quota_mod.spec.permission_hint() if quota_mod is not None else ""
-        hint(
-            "可选信息模块。关掉全部来源后不再显示该板块，桌宠仍可单独使用。"
-            + (f" {perm}。" if perm else "")
-        )
+        hint(_t("quota.hint", "可选信息模块。关掉全部来源后不再显示该板块，桌宠仍可单独使用。") + (f" {perm}。" if perm and lang == "zh-CN" else ""))
 
-        heading("随软件启动")
+        heading(_t("section.startup", "随软件启动"))
         inner = card()
         self._grok_start_var = tk.BooleanVar(value=grok_autostart_on())
         self._cursor_start_var = tk.BooleanVar(value=cursor_autostart_on())
-        add_switch(inner, "随 Grok Build 启动", self._grok_start_var, self._on_toggle_grok_start)
-        add_switch(inner, "随 Cursor 启动", self._cursor_start_var, self._on_toggle_cursor_start)
-        hint("打开 Grok 或 Cursor 后几秒内出现。登录 Windows 后会在后台等待这两个软件。")
+        add_switch(inner, _t("startup.grok", "随 Grok Build 启动"), self._grok_start_var, self._on_toggle_grok_start)
+        add_switch(inner, _t("startup.cursor", "随 Cursor 启动"), self._cursor_start_var, self._on_toggle_cursor_start)
+        hint(_t("startup.hint", "打开 Grok 或 Cursor 后几秒内出现。登录 Windows 后会在后台等待这两个软件。"))
 
-        heading("更新")
+        heading(_t("section.update", "更新"))
         inner = card()
         self._check_updates_var = tk.BooleanVar(value=self.check_updates)
-        add_switch(inner, "启动后检查 GitHub 新版本", self._check_updates_var, self._on_toggle_check_updates)
+        add_switch(inner, _t("update.check_start", "启动后检查 GitHub 新版本"), self._check_updates_var, self._on_toggle_check_updates)
         self._update_status = tk.Label(
             inner,
             text=self._update_status_text(),
@@ -2594,7 +2625,7 @@ class UsagePet:
         self._update_status.pack(fill="x", pady=(4, 4))
         tk.Button(
             inner,
-            text="现在检查",
+            text=_t("update.check_now", "现在检查"),
             command=lambda: self._check_update_now(manual=True),
             bg=card_bg,
             fg=ui["settings_text"],
@@ -2609,7 +2640,7 @@ class UsagePet:
         ).pack(fill="x", pady=2)
         tk.Button(
             inner,
-            text="下载并安装",
+            text=_t("update.install", "下载并安装"),
             command=self._apply_update,
             bg=card_bg,
             fg=ui["settings_text"],
@@ -2622,13 +2653,13 @@ class UsagePet:
             cursor="hand2",
             anchor="w",
         ).pack(fill="x", pady=2)
-        hint("只从 GitHub Release 下载官方 zip，校验 SHA256 后才会替换。不会静默安装。源码运行只能打开网页，不会改源码目录。")
+        hint(_t("update.hint", "只从 GitHub Release 下载官方 zip，校验 SHA256 后才会替换。不会静默安装。源码运行只能打开网页，不会改源码目录。"))
 
-        heading("卸载")
+        heading(_t("section.uninstall", "卸载"))
         inner = card()
         tk.Button(
             inner,
-            text="清除本机数据并退出",
+            text=_t("uninstall.action", "清除本机数据并退出"),
             command=self._confirm_purge,
             bg=card_bg,
             fg=ui["settings_text"],
@@ -2641,7 +2672,36 @@ class UsagePet:
             cursor="hand2",
             anchor="w",
         ).pack(fill="x", pady=2)
-        hint("删除自启、桌面快捷方式和额度快照，然后退出。不会退出 Grok / Cursor / Codex，也不会删除程序文件夹。")
+        hint(_t("uninstall.hint", "删除自启、桌面快捷方式和额度快照，然后退出。不会退出 Grok / Cursor / Codex，也不会删除程序文件夹。"))
+
+        category_box.configure(values=[name for name, _page in pages])
+        category_var.set(pages[0][0])
+
+        def show_page(_event=None) -> None:
+            selected = category_var.get()
+            for name, page in pages:
+                page.pack_forget()
+                if name == selected:
+                    page.pack(fill="both", expand=True)
+
+        def change_language(_event=None) -> None:
+            selected = next((code for code, name in LANGUAGE_NAMES.items() if name == language_var.get()), self.language)
+            if selected == self.language:
+                return
+            geometry = win.geometry()
+            self.language = selected
+            self.persist()
+            self._rebuild_menu()
+            self.draw()
+            win.destroy()
+            self._settings = None
+            self.open_settings()
+            if self._settings is not None and self._settings.winfo_exists():
+                self._settings.geometry(geometry)
+
+        category_box.bind("<<ComboboxSelected>>", show_page)
+        language_box.bind("<<ComboboxSelected>>", change_language)
+        show_page()
 
         win.protocol("WM_DELETE_WINDOW", win.destroy)
 
@@ -2752,7 +2812,7 @@ class UsagePet:
                 uninstall_hook()
         except Exception as exc:
             self._grok_start_var.set(not want)
-            self._toast(f"无法更改 Grok 启动：{exc}")
+            self._toast(tr(self.language, "startup.grok_failed", f"无法更改 Grok 启动：{exc}", error=exc))
             return
         self._grok_start_var.set(grok_autostart_on())
         sync_watcher()
@@ -2766,21 +2826,23 @@ class UsagePet:
                 uninstall_cursor_hook()
         except Exception as exc:
             self._cursor_start_var.set(not want)
-            self._toast(f"无法更改 Cursor 启动：{exc}")
+            self._toast(tr(self.language, "startup.cursor_failed", f"无法更改 Cursor 启动：{exc}", error=exc))
             return
         self._cursor_start_var.set(cursor_autostart_on())
         sync_watcher()
 
     def _update_status_text(self) -> str:
+        lang = getattr(self, "language", "zh-CN")
         if self._update_busy:
-            return "正在检查或下载…"
+            return tr(lang, "update.busy", "正在检查或下载…")
         info = self._update_info
         if info is None:
-            return f"当前 v{APP_VERSION}。有新版本时会提示，需手动安装。"
+            return tr(lang, "update.current", f"当前 v{APP_VERSION}。有新版本时会提示，需手动安装。", version=APP_VERSION)
         if app_update.is_newer(info.version):
-            extra = "可下载安装。" if app_update.can_apply_inplace() else "请打开发布页自行下载。"
-            return f"发现 v{info.version}。{extra}"
-        return f"已是最新 v{APP_VERSION}。"
+            key = "update.found_install" if app_update.can_apply_inplace() else "update.found_page"
+            zh = f"发现 v{info.version}。" + ("可下载安装。" if app_update.can_apply_inplace() else "请打开发布页自行下载。")
+            return tr(lang, key, zh, version=info.version)
+        return tr(lang, "update.latest", f"已是最新 v{APP_VERSION}。", version=APP_VERSION)
 
     def _refresh_update_status(self) -> None:
         if getattr(self, "_update_status", None) is not None:
@@ -2827,11 +2889,11 @@ class UsagePet:
             return
         info = self._update_info
         if info is None or not app_update.is_newer(info.version):
-            self._toast("请先检查更新。")
+            self._toast(tr(self.language, "update.check_first", "请先检查更新。"))
             return
         if not app_update.can_apply_inplace():
             self._open_release_page(info)
-            self._toast("源码运行不会改文件。已打开 GitHub 发布页。")
+            self._toast(tr(self.language, "update.source_opened", "源码运行不会改文件。已打开 GitHub 发布页。"))
             return
         self._update_busy = True
         self._refresh_update_status()
@@ -2870,7 +2932,7 @@ class UsagePet:
             if err:
                 self._refresh_update_status()
                 if manual:
-                    self._toast(f"检查失败：{err}")
+                    self._toast(tr(self.language, "update.check_failed", f"检查失败：{err}", error=err))
                 return
             save_state({"last_update_check": time.time()})
             info = payload
@@ -2879,16 +2941,16 @@ class UsagePet:
             if info is not None and app_update.is_newer(info.version):
                 if manual:
                     self._open_release_page(info)
-                self._toast(f"有新版本 v{info.version}。")
+                self._toast(tr(self.language, "update.new", f"有新版本 v{info.version}。", version=info.version))
             elif manual:
-                self._toast(f"已是最新 v{APP_VERSION}。")
+                self._toast(tr(self.language, "update.latest", f"已是最新 v{APP_VERSION}。", version=APP_VERSION))
             return
         if err:
             self._refresh_update_status()
             if kind == "launched":
-                self._toast(f"无法开始安装：{err}")
+                self._toast(tr(self.language, "update.install_failed", f"无法开始安装：{err}", error=err))
             else:
-                self._toast(f"下载失败：{err}")
+                self._toast(tr(self.language, "update.download_failed", f"下载失败：{err}", error=err))
             return
         if kind == "ready":
             self._update_busy = True
@@ -2923,9 +2985,9 @@ class UsagePet:
             return
         if kind != "launched":
             self._refresh_update_status()
-            self._toast("更新状态无效。")
+            self._toast(tr(self.language, "update.invalid", "更新状态无效。"))
             return
-        self._toast("将退出并安装新版本。")
+        self._toast(tr(self.language, "update.installing", "将退出并安装新版本。"))
         self.root.after(400, lambda: self.quit(mark_dismissed=False))
 
     def quit(self, *, keep_data: bool = True, mark_dismissed: bool = True) -> None:
@@ -2964,20 +3026,16 @@ class UsagePet:
             except OSError:
                 on_desktop = False
             if on_desktop:
-                self._toast(f"快捷方式：\n{path}")
+                self._toast(tr(self.language, "shortcut.created", f"快捷方式：\n{path}", path=path))
             else:
-                self._toast(
-                    "桌面写入被拦截，已放在程序目录：\n"
-                    f"{path}\n"
-                    "可把它拖到桌面，或在 Windows 安全中心允许本程序访问桌面。"
-                )
+                self._toast(tr(self.language, "shortcut.fallback", "桌面写入被拦截，已放在程序目录：\n" f"{path}\n" "可把它拖到桌面，或在 Windows 安全中心允许本程序访问桌面。", path=path))
         except Exception as exc:
-            self._toast(f"创建失败：{exc}")
+            self._toast(tr(self.language, "shortcut.failed", f"创建失败：{exc}", error=exc))
 
     def _toast(self, text: str) -> None:
         ui = style()
         dlg = tk.Toplevel(self.root)
-        dlg.title("提示")
+        dlg.title(tr(self.language, "generic.notice", "提示"))
         dlg.attributes("-topmost", True)
         dlg.resizable(False, False)
         dlg.configure(bg=ui["settings_bg"])
@@ -2993,7 +3051,7 @@ class UsagePet:
         ).pack(padx=18, pady=(16, 10))
         btn = tk.Label(
             dlg,
-            text="好",
+            text=tr(self.language, "generic.ok", "好"),
             bg=ui.get("accent", "#c94b4b"),
             fg="#ffffff",
             font=ui["font_title"],
@@ -3011,14 +3069,14 @@ class UsagePet:
         remove_program = validated_self_delete_dir() is not None
         parent = self._settings if self._settings is not None and self._settings.winfo_exists() else self.root
         dlg = tk.Toplevel(parent)
-        dlg.title("清除本机数据")
+        dlg.title(tr(self.language, "purge.title", "清除本机数据"))
         dlg.attributes("-topmost", True)
         dlg.resizable(False, False)
         dlg.configure(bg=ui["settings_bg"])
         self._apply_app_icon(dlg)
         tk.Label(
             dlg,
-            text=(
+            text=tr(self.language, "purge.body_portable" if remove_program else "purge.body_source", (
                 "将删除自启、桌面快捷方式和额度快照，然后退出宠物。\n"
                 "不会动 Grok / Cursor / Codex 的登录。\n"
                 + (
@@ -3026,7 +3084,7 @@ class UsagePet:
                     if remove_program
                     else "源码 clone 或未验证目录请自行删除。"
                 )
-            ),
+            )),
             bg=ui["settings_bg"],
             fg=ui["settings_text"],
             font=ui["font_ui"],
@@ -3045,7 +3103,7 @@ class UsagePet:
 
         tk.Button(
             row,
-            text="取消",
+            text=tr(self.language, "generic.cancel", "取消"),
             command=cancel,
             bg=ui.get("inner", "#ffffff"),
             fg=ui["settings_text"],
@@ -3055,7 +3113,7 @@ class UsagePet:
         ).pack(side="right")
         tk.Button(
             row,
-            text="完整卸载并退出" if remove_program else "清除并退出",
+            text=tr(self.language, "purge.full", "完整卸载并退出") if remove_program else tr(self.language, "purge.clear", "清除并退出"),
             command=confirm,
             bg=ui.get("accent", "#c94b4b"),
             fg="#ffffff",
@@ -3260,7 +3318,7 @@ class UsagePet:
             self._draw_reset_tip()
 
     def _pools(self) -> dict:
-        return build_pools(self.snap)
+        return build_pools(self.snap, language=self.language)
 
     def _draw_panel_tabs(self, c, x0: int, x1: int, y0: int, ui: dict) -> int:
         pad = 14
@@ -3276,8 +3334,8 @@ class UsagePet:
             c.create_rectangle(tx0, track_y, tx1, track_y + track_h, fill=inner, outline=ui["bubble_outline"])
         active = self.active_panel()
         for pid, label, left, right in (
-            ("clock", "时钟", tx0, mid),
-            ("quota", "额度", mid, tx1),
+            ("clock", tr(self.language, "tab.clock", "时钟"), tx0, mid),
+            ("quota", tr(self.language, "tab.quota", "额度"), mid, tx1),
         ):
             on = pid == active
             if on:
@@ -3424,6 +3482,7 @@ class UsagePet:
             getattr(self, "clock_enabled", {}),
             getattr(self, "clock_state", {}),
             now=time.time(),
+            language=self.language,
         )
         family = ui["font_title"][0]
         pad = 16
@@ -3453,11 +3512,11 @@ class UsagePet:
             mode_h = 22
             mid = (x0 + x1) / 2
             self._draw_clock_button(
-                c, x0 + pad + 10, mode_y, mid - 4, mode_y + mode_h, "闹钟", "tmr_mode_countdown", ui,
+                c, x0 + pad + 10, mode_y, mid - 4, mode_y + mode_h, tr(self.language, "timer.alarm", "闹钟"), "tmr_mode_countdown", ui,
                 primary=view["timer_mode"] == "countdown",
             )
             self._draw_clock_button(
-                c, mid + 4, mode_y, x1 - pad - 10, mode_y + mode_h, "秒表", "tmr_mode_stopwatch", ui,
+                c, mid + 4, mode_y, x1 - pad - 10, mode_y + mode_h, tr(self.language, "timer.stopwatch", "秒表"), "tmr_mode_stopwatch", ui,
                 primary=view["timer_mode"] == "stopwatch",
             )
             face_cx = x0 + pad + 40
@@ -3633,24 +3692,26 @@ class UsagePet:
 
     def _reset_lines(self) -> list[str]:
         hover = self._hover
+        english = getattr(self, "language", "zh-CN") == "en"
         if hover == "tab:quota":
-            return ["额度板块", "查看 AI 工具剩余额度"]
+            return ["Usage panel", "View remaining AI tool allowances"] if english else ["额度板块", "查看 AI 工具剩余额度"]
         if hover == "tab:clock":
-            return ["时钟板块", "本地时间、秒表和倒计时闹钟"]
+            return ["Clock panel", "Local time, stopwatch, and countdown"] if english else ["时钟板块", "本地时间、秒表和倒计时闹钟"]
         if hover == "tmr_toggle":
             state = clock_module.normalize_clock_state(getattr(self, "clock_state", {}))
             if state.get("timer_ringing"):
-                return ["闹钟", "关掉铃声"]
-            label = "倒计时" if state.get("timer_mode") == "countdown" else "秒表"
-            return [label, "暂停" if state.get("timer_running") else "开始"]
+                return ["Alarm", "Stop sound"] if english else ["闹钟", "关掉铃声"]
+            label = ("Countdown" if state.get("timer_mode") == "countdown" else "Stopwatch") if english else ("倒计时" if state.get("timer_mode") == "countdown" else "秒表")
+            return [label, ("Pause" if state.get("timer_running") else "Start") if english else ("暂停" if state.get("timer_running") else "开始")]
         if hover == "tmr_reset":
-            return ["闹钟", "归零"]
+            return ["Alarm", "Reset"] if english else ["闹钟", "归零"]
         if hover == "tmr_mode_stopwatch":
-            return ["秒表", "正向计时"]
+            return ["Stopwatch", "Count upward"] if english else ["秒表", "正向计时"]
         if hover == "tmr_mode_countdown":
-            return ["闹钟", "倒计时"]
+            return ["Alarm", "Countdown"] if english else ["闹钟", "倒计时"]
         if str(hover or "").startswith("tmr_preset_"):
-            return ["倒计时", f"{str(hover).split('_')[-1]} 分钟"]
+            minutes = str(hover).split('_')[-1]
+            return ["Countdown", f"{minutes} minutes"] if english else ["倒计时", f"{minutes} 分钟"]
         pools = self._pools()
         if hover == "both":
             keys = list(self.visible_rows())
@@ -3663,7 +3724,7 @@ class UsagePet:
         for i, key in enumerate(keys):
             if i:
                 lines.append("")
-            lines.extend(pool_tip_lines(pools[key], fetching=fetching))
+            lines.extend(pool_tip_lines(pools[key], fetching=fetching, language=self.language))
         return lines
 
     def _draw_reset_tip(self) -> None:
