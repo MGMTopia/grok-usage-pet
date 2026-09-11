@@ -1,6 +1,6 @@
 # Notices
 
-Grok Usage Pet is an unofficial community project. It is not affiliated with,
+AI Quota Pet is an unofficial community project. It is not affiliated with,
 endorsed by, or sponsored by xAI, Cursor, OpenAI, Microsoft, or any anime or
 media rights holder.
 

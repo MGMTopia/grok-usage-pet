@@ -7,7 +7,7 @@ fonts, or other media distributed with or used to create this project.
 ## Original theme
 
 The `skins/original/` theme is an original project asset. Unless a file states
-otherwise, it may be redistributed with Grok Usage Pet under the same MIT
+otherwise, it may be redistributed with AI Quota Pet under the same MIT
 terms as the source code. This permission does not extend to third-party tools,
 fonts, or runtime components used by the packaged application.
 

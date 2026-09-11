@@ -1,6 +1,6 @@
 # Third-party notices
 
-Grok Usage Pet includes or is packaged with third-party software. Those
+AI Quota Pet includes or is packaged with third-party software. Those
 components retain their own licenses; the project MIT license does not replace
 them.
 

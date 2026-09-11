@@ -76,9 +76,9 @@ class ShortcutTests(unittest.TestCase):
                 with mock.patch.object(pet.fu, "install_dir", return_value=install):
                     with mock.patch.object(pet, "_write_windows_lnk_com", side_effect=write):
                         path = pet.create_desktop_shortcut()
-            self.assertEqual(path, install / "Grok额度宠物.lnk")
+            self.assertEqual(path, install / "AI Quota Pet.lnk")
             self.assertTrue(path.is_file())
-            self.assertFalse((desktop / "Grok额度宠物.lnk").exists())
+            self.assertFalse((desktop / "AI Quota Pet.lnk").exists())
 
 
 if __name__ == "__main__":

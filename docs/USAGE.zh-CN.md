@@ -1,12 +1,12 @@
-# Grok Usage Pet 使用说明
+# AI Quota Pet / AI 额度桌宠使用说明
 
-Grok Usage Pet 是 Windows 10/11 上的透明桌面宠物，用来查看 SuperGrok、
+AI Quota Pet 是 Windows 10/11 上的透明桌面宠物，用来查看 SuperGrok、
 Grok Bot、Cursor 和 Codex 的额度与重置时间。它不是 xAI、Cursor 或 OpenAI
 官方软件。
 
 ## 安装
 
-1. 从 GitHub Releases 下载当前 Windows x64 ZIP（`GrokUsagePet-v0.3.13-Windows-x64.zip`）。
+1. 从 GitHub Releases 下载当前 Windows x64 ZIP（`GrokUsagePet-v0.3.15-Windows-x64.zip`）。
 2. 解压整个文件夹，不要只复制 EXE。
 3. 至少登录一个数据来源：
    - SuperGrok：通过 Grok CLI 完成登录；
@@ -27,6 +27,8 @@ Grok Bot、Cursor 和 Codex 的额度与重置时间。它不是 xAI、Cursor �
 - 拖动宠物：移动位置；
 - 双击：固定或取消固定额度条（仅本次运行，重启后默认收起）；
 - 右键：刷新、设置主题、创建桌面快捷方式或退出。
+- 右键菜单、设置、提示和倒计时提醒会继承当前皮肤的气泡颜色、描边、强调色与文字颜色；自定义窗口栏可拖动，主操作、次操作和危险操作层级清晰。
+- 设置使用分类下拉菜单，一次聚焦一个板块；可在简体中文与 English 间即时切换，选择会保存。皮肤切换会先显示进度反馈，再原位无闪烁替换完整窗口。
 - 设置 → 时钟板块 / 额度板块：分开开关。展开后点顶部「时钟 / 额度」切换。
   时钟含主题闹钟：秒表或倒计时（1/5/10/25 分）。时间到会切到时钟面板、弹出「时间到」、跳跃并响短提示音。
 - 设置 → 更新：开关「启动后检查 GitHub 新版本」（默认开，约每天一次）；

@@ -1,9 +1,9 @@
 # Architecture
 
-Grok Usage Pet has two independent product layers:
+AI Quota Pet has two independent product layers:
 
 ```text
-Grok Usage Pet
+AI Quota Pet
 ├── Pet engine
 │   ├── Original theme
 │   └── Megumi Kato fan theme

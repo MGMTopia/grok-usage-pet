@@ -1,7 +1,7 @@
-Grok Usage Pet
+AI Quota Pet / AI 额度桌宠
 ==============
 
-版本：0.3.14（GitHub 标签 v0.3.14）
+版本：0.3.15（GitHub 标签 v0.3.15）
 
 看 SuperGrok 周额度、Grok Bot 周额度、Cursor 两个月额度池，以及 Codex（一条上 5 小时同色、周额度略深）的透明桌宠。
 不是 xAI / Cursor / OpenAI 官方软件。账单接口以后可能会变。
@@ -11,15 +11,16 @@ Grok Usage Pet
 
 即插即用
 --------
-1. 解压整个「GrokUsagePet-v0.3.14-Windows-x64」文件夹，不要只拷贝 exe。
+1. 解压整个「GrokUsagePet-v0.3.15-Windows-x64」文件夹，不要只拷贝 exe。
 2. 本机先登录一次（登哪个就显示哪条；不必一直开着软件）：
    - SuperGrok：安装 Grok CLI 后运行  grok login
    - Grok Bot 和 Cursor 额度：打开 Cursor 并登录
    - Codex：本机 ChatGPT 登录过 Codex（codex login），不要用纯 API Key 模式
 3. Windows：双击 GrokUsagePet.exe
 4. 右键角色 → 设置：
-   - 用顶部「设置分类」下拉菜单切换板块，一次只显示一个板块
+   - 用顶部「设置分类」菜单切换板块，一次只显示一个板块；标题、菜单、卡片、开关和操作按钮会跟随当前皮肤配色与风格
    - 用「语言」下拉菜单即时切换简体中文 / English，选择会自动保存
+   - 切换形象时会先显示主题进度提示，新窗口完成后在原位置一次替换，不会闪出未完成窗口
    - 开关要显示的额度条
    - 开关「随 Grok Build 启动」「随 Cursor 启动」
      打开后，启动或重新打开 Grok / Cursor 会出现宠物。右键退出后不会在软件仍运行时再被拉起，除非重新启动 Grok 或 Cursor，或自己再打开宠物。
@@ -44,6 +45,7 @@ Grok Usage Pet
 - 拖动角色移动位置
 - 双击：固定 / 取消固定额度条
 - 右键 → 退出宠物
+- 右键菜单、设置窗口栏、提示框、闹钟和卸载确认会跟随额度气泡与当前皮肤配色；自定义窗口栏可拖动，菜单支持悬停、键盘焦点、Esc 关闭和屏幕边缘避让
 - 右键 → 创建桌面快捷方式：写到当前用户桌面（含 OneDrive 桌面）
 - 快捷方式 / 设置窗口图标使用当前默认 Original 主题
 - 右键 → 设置 → 额度板块 / 时钟板块：两个功能分开开关

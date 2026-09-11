@@ -1,6 +1,6 @@
 # Security and privacy
 
-Grok Usage Pet is local-first and has no telemetry, analytics, advertising,
+AI Quota Pet is local-first and has no telemetry, analytics, advertising,
 crash-reporting service, or machine fingerprinting. Optional update checks
 query only the GitHub Releases API for this repository. Installing an update
 requires an explicit click, HTTPS, a strict versioned filename allowlist, an

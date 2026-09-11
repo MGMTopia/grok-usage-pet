@@ -1,9 +1,9 @@
-# Grok 额度桌宠
+# AI Quota Pet / AI 额度桌宠
 
-**Grok usage desktop pet** · [中文](#安装) · [English](#install)
+**A skin-themed AI quota companion for Windows** · [中文](#安装) · [English](#install)
 
 <p align="center">
-  <img src="docs/preview.gif" alt="Grok 额度桌宠 / Grok usage desktop pet showing SuperGrok, Grok Bot, Cursor, and Codex remaining quota" />
+  <img src="docs/preview.gif" alt="AI Quota Pet showing SuperGrok, Grok Bot, Cursor, and Codex remaining quota" />
 </p>
 
 Windows 上的非官方额度桌宠，用来看 SuperGrok 周额度、Grok Bot 周额度、Cursor 月额度，以及 Codex 余量。不是 xAI、Cursor 或 OpenAI 官方软件。程序代码是 MIT；角色素材见 [ASSETS_NOTICE.md](ASSETS_NOTICE.md)。
@@ -12,9 +12,9 @@ Windows 上的非官方额度桌宠，用来看 SuperGrok 周额度、Grok Bot �
 
 ## 安装
 
-当前版本：**0.3.14**（`v0.3.14`）。
+当前版本：**0.3.15**（`v0.3.15`）。
 
-从 [GitHub Release](https://github.com/MGMTopia/grok-usage-pet/releases/latest) 下载 **`GrokUsagePet-v0.3.14-Windows-x64.zip`**。不必装 Python。
+从 [GitHub Release](https://github.com/MGMTopia/grok-usage-pet/releases/latest) 下载 **`GrokUsagePet-v0.3.15-Windows-x64.zip`**。不必装 Python。
 
 1. 解压**整个文件夹**，不要只拷贝 exe。
 2. 本机先登录一次（登哪个就显示哪条）：
@@ -42,7 +42,7 @@ Windows 10/11。数据在 `%LOCALAPPDATA%\GrokUsagePet`。设置 → 卸载，�
 
 Unofficial overlay for SuperGrok weekly, Grok Bot weekly, Cursor monthly, and Codex quota. Not an xAI, Cursor, or OpenAI product.
 
-Download **`GrokUsagePet-v0.3.14-Windows-x64.zip`** from the
+Download **`GrokUsagePet-v0.3.15-Windows-x64.zip`** from the
 [latest GitHub Release](https://github.com/MGMTopia/grok-usage-pet/releases/latest).
 Python is not required.
 
@@ -52,7 +52,9 @@ Python is not required.
 
 Windows 10/11.
 
-Right-click the pet and choose **Settings…**. The settings window uses a compact category drop-down so only one section is shown at a time. Use **Language** to switch the settings, context menu, quota panel, clock, timer, update status, and common dialogs between Simplified Chinese and English. The choice is saved locally and takes effect immediately.
+Right-click the pet to open a readable custom menu that inherits the active skin instead of using the platform's default styling. **Settings…**, notices, countdown alerts, and uninstall confirmation use draggable custom title bars and surfaces derived from the quota bubble's fill, outline, accent, and text colors. Titles, content cards, secondary actions, primary actions, and destructive actions have a consistent hierarchy. The settings window uses a compact category menu so only one section is shown at a time. Use **Language** to switch the settings, context menu, quota panel, clock, timer, update status, and common dialogs between Simplified Chinese and English. The choice is saved locally and takes effect immediately.
+
+Skin changes keep the Settings window in the same position. The replacement is fully built while hidden and swapped in one step, with immediate themed progress feedback and per-skin frame caching to avoid partial-window flashes and repeated decoding work.
 
 ### If something looks stuck
 
@@ -106,7 +108,7 @@ The preview renders fixed sample quotas and exits after three seconds without sa
 
 | Zip | What |
 |-----|------|
-| `GrokUsagePet-v0.3.14-Windows-x64.zip` | Current release (`GrokUsagePet.exe`). Rebuild with `pack-windows.ps1`. |
+| `GrokUsagePet-v0.3.15-Windows-x64.zip` | Current release (`GrokUsagePet.exe`). Rebuild with `pack-windows.ps1`. |
 | `GrokUsagePet-kawaii.zip` | Legacy v0.2.0 compatibility archive; not the current release. |
 
 Do not copy `auth.json`, Cursor `state.vscdb`, or `pet_state.json` into a zip.
@@ -139,6 +141,8 @@ Do not copy `auth.json`, Cursor `state.vscdb`, or `pet_state.json` into a zip.
 - `docs/preview.gif` — README animation, regenerated with `docs/make_preview_gif.py`
 
 Version changes are recorded in [CHANGELOG.md](CHANGELOG.md). Code licensing is in [LICENSE](LICENSE), packaged dependency terms are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), and artwork redistribution boundaries are documented separately.
+
+The public product name is **AI Quota Pet / AI 额度桌宠**. For safe in-place upgrades, v0.x keeps the established `GrokUsagePet.exe`, `%LOCALAPPDATA%\GrokUsagePet`, GitHub repository URL, and updater channel. See the [roadmap](docs/ROADMAP.zh-CN.md) for the compatibility plan and future companion/module direction.
 
 ## Feedback and contributions
 

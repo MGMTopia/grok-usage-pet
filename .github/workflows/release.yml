@@ -95,5 +95,5 @@ jobs:
           $version = "${{ steps.release_files.outputs.version }}"
           $zip = "${{ steps.release_files.outputs.zip }}"
           $checksum = "${{ steps.release_files.outputs.checksum }}"
-          gh release create $tag $zip $checksum --verify-tag --title "Grok Usage Pet v$version" --notes-file release-notes.md --draft
+          gh release create $tag $zip $checksum --verify-tag --title "AI Quota Pet v$version" --notes-file release-notes.md --draft
           gh release edit $tag --draft=false
