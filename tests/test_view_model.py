@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import unittest
 
 from pet_view_model import (
@@ -20,6 +21,12 @@ class PetViewModelTests(unittest.TestCase):
         self.assertEqual(pools["cm"]["title"], "Cursor models")
         self.assertEqual(pools["cx"]["layers"][0]["label"], "5 hours")
         self.assertIn("Fetching…", pool_tip_lines(pools["sg"], fetching=True, language="en"))
+        visible_copy = " ".join(
+            str(pool.get(field) or "")
+            for pool in pools.values()
+            for field in ("title", "tag", "period")
+        )
+        self.assertIsNone(re.search(r"[\u3400-\u9fff]", visible_copy))
 
     def test_build_pools_handles_empty_snapshot(self) -> None:
         pools = build_pools(None)

@@ -1,7 +1,7 @@
 {
   "id": "original",
   "displayName": "Original / Pip",
-  "description": "项目原创像素机器人，也是 Grok Usage Pet 的默认主题。",
+  "description": "项目原创像素机器人，也是 AI Quota Pet 的默认主题。",
   "spritesheetPath": "spritesheet.webp",
   "icon": "app.ico",
   "iconPng": "app.png",

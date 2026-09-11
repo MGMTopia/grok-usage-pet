@@ -21,7 +21,6 @@ import webbrowser
 from pathlib import Path
 from tkinter import Menu
 from tkinter import font as tkfont
-from tkinter import ttk
 
 if getattr(sys, "frozen", False):
     sys.path.insert(0, str(Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))))
@@ -35,7 +34,7 @@ import app_update
 import info_modules
 import clock_module
 from localization import LANGUAGE_NAMES, SUPPORTED_LANGUAGES, normalize_language, tr
-from app_version import APP_VERSION, INSTALL_MARKER_NAME, INSTALL_MARKER_VALUE
+from app_version import APP_DISPLAY_NAME, APP_VERSION, INSTALL_MARKER_NAME, INSTALL_MARKER_VALUE
 from snapshot_store import write_text_atomic
 from pet_settings import (
     DEFAULT_QUOTA_ENABLED,
@@ -928,6 +927,8 @@ APP_TASK_NAMES = (
 )
 WATCH_TASK_NAMES = tuple(name for name in APP_TASK_NAMES if name.endswith("Watch"))
 APP_SHORTCUT_NAMES = (
+    "AI Quota Pet.lnk",
+    "AI Quota Pet.command",
     "Grok额度宠物.lnk",
     "Grok额度宠物-可爱版.lnk",
     "Grok额度宠物.command",
@@ -1285,7 +1286,19 @@ def schedule_self_delete(wait_pid: int | None = None) -> bool:
     return True
 
 
-def format_purge_report(result: dict[str, list[str]], *, program_scheduled: bool = False) -> str:
+def format_purge_report(result: dict[str, list[str]], *, program_scheduled: bool = False, language: str = "zh-CN") -> str:
+    if normalize_language(language) == "en":
+        lines = [
+            "Grok, Cursor, and Codex sessions were not removed.",
+            f"Scheduled tasks: {', '.join(result['tasks']) or 'none'}",
+            f"Background processes: {len(result['processes'])}",
+            f"Shortcuts: {len(result['shortcuts'])}",
+            f"Data folders: {len(result['data'])}",
+            "Program folder: removed automatically after exit" if program_scheduled else "Program folder: remove source/unverified folders manually",
+        ]
+        if result["errors"]:
+            lines.append("Incomplete: " + "; ".join(result["errors"]))
+        return "\n".join(lines)
     lines = [
         "不会删除 Grok / Cursor / Codex 登录。",
         f"计划任务：{', '.join(result['tasks']) or '无'}",
@@ -1405,9 +1418,9 @@ def desktop_shortcut_spec(*, desktop: Path | None = None) -> dict[str, object]:
     target, args = gui_command()
     folder = desktop if desktop is not None else desktop_dir()
     if os.name == "nt":
-        name = "Grok额度宠物-可爱版.lnk" if fu.pack_id() == "kawaii" else "Grok额度宠物.lnk"
+        name = "Grok额度宠物-可爱版.lnk" if fu.pack_id() == "kawaii" else "AI Quota Pet.lnk"
     else:
-        name = "Grok额度宠物-可爱版.command" if fu.pack_id() == "kawaii" else "Grok额度宠物.command"
+        name = "Grok额度宠物-可爱版.command" if fu.pack_id() == "kawaii" else "AI Quota Pet.command"
     icon = _shortcut_icon_path()
     return {
         "path": folder / name,
@@ -1603,6 +1616,9 @@ class UsagePet:
         self._update_busy = False
         self._update_results: queue.Queue = queue.Queue()
         self._settings: tk.Toplevel | None = None
+        self._skin_switching = False
+        self._context_menu: tk.Toplevel | None = None
+        self._menu_items: list[tuple[str, str, object, str]] = []
         self._drag = None
         self._drag_dx = 0
         self._last_drag_x = 0
@@ -1613,6 +1629,7 @@ class UsagePet:
         self._photos: dict[str, object] = {}
         self._anims: dict[str, list] = {}
         self._looks: list = []
+        self._skin_frame_cache: dict[str, tuple[dict[str, list], list]] = {}
         self._anim = "idle"
         self._frame = 0
         self._frame_acc = 0.0
@@ -1637,7 +1654,7 @@ class UsagePet:
         self.root = tk.Tk()
         print("Tk created", flush=True)
         pick_ui_fonts(self.root)
-        self.root.title(f"Grok Usage Pet v{APP_VERSION}")
+        self.root.title(f"{APP_DISPLAY_NAME} v{APP_VERSION}")
         self._apply_app_icon(self.root)
         self.root.withdraw()
         self.root.overrideredirect(True)
@@ -1887,10 +1904,17 @@ class UsagePet:
     def _load_sprites(self) -> None:
         if ImageTk is None:
             return
+        cached = self._skin_frame_cache.get(self.skin_id)
+        if cached is not None:
+            anims, looks = cached
+            self._anims = anims
+            self._looks = looks
+            return
         loaded = load_atlas_frames()
         self._looks = list(loaded.pop("_looks", []))
         self._anims = loaded
         if self._anims:
+            self._skin_frame_cache[self.skin_id] = (self._anims, self._looks)
             return
         for key, name in (
             ("idle", "pet_idle.png"),
@@ -2212,30 +2236,139 @@ class UsagePet:
             menu.delete(0, "end")
             lang = getattr(self, "language", "zh-CN")
             _t = lambda key, zh, **values: tr(lang, key, zh, **values)
-            menu.add_command(label=_t("menu.pin", "固定 / 取消固定面板"), command=self.toggle_expand)
-            menu.add_command(label=_t("menu.settings", "设置…"), command=self.open_settings)
+            items: list[tuple[str, str, object, str]] = []
+
+            def add(label: str, command, role: str = "normal") -> None:
+                items.append(("command", label, command, role))
+                menu.add_command(label=label, command=command)
+
+            def separator() -> None:
+                items.append(("separator", "", None, "normal"))
+                menu.add_separator()
+
+            add(_t("menu.pin", "固定 / 取消固定面板"), self.toggle_expand)
+            add(_t("menu.settings", "设置…"), self.open_settings, "primary")
             available = self.available_panels()
             if "quota" in available and "clock" in available:
                 other = "clock" if self.active_panel() == "quota" else "quota"
-                menu.add_command(
-                    label=_t("menu.to_clock", "切换到时钟") if other == "clock" else _t("menu.to_quota", "切换到额度"),
-                    command=lambda p=other: self._set_info_panel(p),
+                add(
+                    _t("menu.to_clock", "切换到时钟") if other == "clock" else _t("menu.to_quota", "切换到额度"),
+                    lambda p=other: self._set_info_panel(p),
                 )
             if getattr(self, "clock_enabled", {}).get("timer") and self.active_panel() == "clock":
                 state = clock_module.normalize_clock_state(getattr(self, "clock_state", {}))
                 running = bool(state.get("timer_running"))
                 ringing = bool(state.get("timer_ringing"))
                 timer_label = _t("menu.stop_alarm", "关掉铃声") if ringing else (_t("menu.pause_timer", "暂停闹钟") if running else _t("menu.start_timer", "开始闹钟"))
-                menu.add_command(label=timer_label, command=self._toggle_timer)
-                menu.add_command(label=_t("menu.reset_timer", "计时归零"), command=self._reset_timer)
+                add(timer_label, self._toggle_timer)
+                add(_t("menu.reset_timer", "计时归零"), self._reset_timer)
             if quota_sources_enabled(getattr(self, "enabled", DEFAULT_ENABLED)):
-                menu.add_command(label=_t("menu.refresh", "刷新额度"), command=self.refresh_now)
-            menu.add_command(label=_t("menu.shortcut", "创建桌面快捷方式"), command=self.install_shortcut)
-            menu.add_separator()
-            menu.add_command(label=_t("menu.data", "打开数据目录"), command=self.open_data_dir)
-            menu.add_command(label=_t("menu.exit", "退出宠物"), command=self.quit)
+                add(_t("menu.refresh", "刷新额度"), self.refresh_now)
+            add(_t("menu.shortcut", "创建桌面快捷方式"), self.install_shortcut)
+            separator()
+            add(_t("menu.data", "打开数据目录"), self.open_data_dir)
+            add(_t("menu.exit", "退出宠物"), self.quit, "danger")
+            self._menu_items = items
+            ui = style()
+            menu.configure(
+                bg=ui.get("inner", ui["settings_bg"]),
+                fg=ui["settings_text"],
+                activebackground=ui["accent"],
+                activeforeground="#10243A" if ui.get("decoration") == "circuit" else "#ffffff",
+                font=ui["font_ui"],
+                bd=0,
+                relief="flat",
+            )
         except tk.TclError:
             return
+
+    def _dismiss_context_menu(self, _event=None) -> None:
+        popup = getattr(self, "_context_menu", None)
+        self._context_menu = None
+        if popup is not None:
+            try:
+                popup.destroy()
+            except tk.TclError:
+                pass
+        if popup is not None and not getattr(self, "_closing", False) and not getattr(self, "pinned", False):
+            try:
+                self._schedule_collapse()
+            except (AttributeError, tk.TclError):
+                pass
+
+    def _show_context_menu(self, x: int, y: int) -> bool:
+        if not getattr(self, "_menu_items", None) or not hasattr(getattr(self, "root", None), "winfo_screenwidth"):
+            return False
+        self._dismiss_context_menu()
+        ui = style()
+        card_bg = ui.get("inner", ui["settings_bg"])
+        accent = ui.get("accent", "#c94b4b")
+        accent_text = "#10243A" if ui.get("decoration") == "circuit" else "#ffffff"
+        mark = "⌁" if ui.get("decoration") == "circuit" else ("♥" if ui.get("decoration") == "bow" else "◆")
+        popup = tk.Toplevel(self.root)
+        self._context_menu = popup
+        popup.withdraw()
+        popup.overrideredirect(True)
+        popup.attributes("-topmost", True)
+        popup.configure(bg=ui["bubble_outline"])
+        shell = tk.Frame(popup, bg=card_bg, highlightbackground=ui["bubble_outline"], highlightthickness=1, bd=0)
+        shell.pack(fill="both", expand=True, padx=1, pady=1)
+        header = tk.Frame(shell, bg=ui["bubble_fill"])
+        header.pack(fill="x")
+        tk.Label(header, text=mark, bg=accent, fg=accent_text, font=(ui["font_title"][0], 12, "bold"), padx=9, pady=6).pack(side="left")
+        tk.Label(header, text=tr(self.language, "menu.title", "宠物菜单"), bg=ui["bubble_fill"], fg=ui.get("pct") or ui["settings_text"], font=ui["font_title"], anchor="w", padx=9, pady=6).pack(side="left", fill="x", expand=True)
+        tk.Frame(shell, height=2, bg=accent).pack(fill="x")
+        body = tk.Frame(shell, bg=card_bg)
+        body.pack(fill="both", expand=True, padx=6, pady=6)
+        buttons: list[tk.Button] = []
+
+        def run(command) -> None:
+            self._dismiss_context_menu()
+            command()
+
+        for kind, label, command, role in self._menu_items:
+            if kind == "separator":
+                tk.Frame(body, height=1, bg=ui["bubble_outline"]).pack(fill="x", padx=5, pady=5)
+                continue
+            danger = role == "danger"
+            primary = role == "primary"
+            normal_bg = accent if primary else card_bg
+            normal_fg = accent_text if primary else ((ui.get("bar_low") or "#ff6b6b") if danger else ui["settings_text"])
+            button = tk.Button(
+                body,
+                text=label,
+                command=lambda action=command: run(action),
+                bg=normal_bg,
+                fg=normal_fg,
+                activebackground=ui.get("settings_select", ui["bar_track"]),
+                activeforeground=ui["settings_text"],
+                font=ui["font_ui"],
+                anchor="w",
+                relief="flat",
+                bd=0,
+                highlightthickness=0,
+                padx=12,
+                pady=6,
+                cursor="hand2",
+                takefocus=True,
+            )
+            button.pack(fill="x", pady=1)
+            button.bind("<Enter>", lambda _e, b=button: b.configure(bg=ui.get("settings_select", ui["bar_track"]), fg=ui["settings_text"]))
+            button.bind("<Leave>", lambda _e, b=button, bg=normal_bg, fg=normal_fg: b.configure(bg=bg, fg=fg))
+            buttons.append(button)
+        popup.bind("<Escape>", self._dismiss_context_menu)
+        popup.bind("<FocusOut>", lambda _e: popup.after(80, lambda: self._dismiss_context_menu() if popup.winfo_exists() and popup.focus_get() is None else None))
+        popup.update_idletasks()
+        width, height = max(238, popup.winfo_reqwidth()), popup.winfo_reqheight()
+        screen_w, screen_h = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
+        px = max(4, min(int(x), screen_w - width - 4))
+        py = max(4, min(int(y), screen_h - height - 4))
+        popup.geometry(f"{width}x{height}+{px}+{py}")
+        popup.deiconify()
+        popup.lift()
+        if buttons:
+            buttons[0].focus_set()
+        return True
 
     def _toggle_timer(self) -> None:
         self._note_activity()
@@ -2289,6 +2422,44 @@ class UsagePet:
 
         threading.Thread(target=work, daemon=True).start()
 
+    def _themed_dialog(self, title: str, *, parent=None, urgent: bool = False):
+        ui = style()
+        owner = parent or self.root
+        dlg = tk.Toplevel(owner)
+        dlg.title(title)
+        dlg.attributes("-topmost", True)
+        dlg.resizable(False, False)
+        self._apply_app_icon(dlg)
+        content = self._themed_window_frame(dlg, title, urgent=urgent)
+        surface = ui.get("inner", ui["bubble_fill"])
+        card = tk.Frame(content, bg=surface, highlightbackground=ui["bubble_outline"], highlightthickness=1, bd=0)
+        card.pack(fill="both", expand=True, padx=14, pady=14)
+        body = tk.Frame(card, bg=surface)
+        body.pack(fill="both", expand=True, padx=16, pady=14)
+        return dlg, body, ui
+
+    def _themed_dialog_button(self, parent: tk.Frame, text: str, command, *, primary: bool = False, danger: bool = False) -> tk.Button:
+        ui = style()
+        accent = (ui.get("bar_low") or ui["accent"]) if danger else ui["accent"]
+        fill = accent if primary or danger else ui.get("settings_select", ui.get("inner", ui["settings_bg"]))
+        foreground = "#ffffff" if danger else (("#10243A" if ui.get("decoration") == "circuit" else "#ffffff") if primary else ui["settings_text"])
+        return tk.Button(
+            parent,
+            text=text,
+            command=command,
+            bg=fill,
+            fg=foreground,
+            activebackground=ui.get("bar_track", fill),
+            activeforeground=ui["settings_text"],
+            font=ui["font_title"] if primary or danger else ui["font_ui"],
+            relief="flat",
+            bd=0,
+            highlightthickness=0,
+            padx=16,
+            pady=7,
+            cursor="hand2",
+        )
+
     def _show_alarm_banner(self) -> None:
         if getattr(self, "_closing", False):
             return
@@ -2301,53 +2472,36 @@ class UsagePet:
                     return
             except tk.TclError:
                 pass
-        ui = style()
-        dlg = tk.Toplevel(self.root)
-        dlg.title(tr(self.language, "timer.done", "时间到"))
-        dlg.attributes("-topmost", True)
-        dlg.resizable(False, False)
-        dlg.configure(bg=ui["settings_bg"])
-        self._apply_app_icon(dlg)
+        title = tr(self.language, "timer.done", "时间到")
+        dlg, body, ui = self._themed_dialog(title, urgent=True)
         tk.Label(
-            dlg,
+            body,
             text=tr(self.language, "timer.done_body", "倒计时结束"),
-            bg=ui["settings_bg"],
+            bg=ui.get("inner", ui["settings_bg"]),
             fg=ui.get("bar_low") or ui["accent"],
             font=ui["font_title"],
         ).pack(padx=22, pady=(16, 4))
         tk.Label(
-            dlg,
+            body,
             text=tr(self.language, "timer.done_hint", "点「关掉」或闹钟上的开始按钮即可停止。"),
-            bg=ui["settings_bg"],
+            bg=ui.get("inner", ui["settings_bg"]),
             fg=ui["settings_text"],
             font=ui["font_ui"],
             wraplength=260,
             justify="left",
         ).pack(padx=22, pady=(0, 10))
-        btn = tk.Label(
-            dlg,
-            text=tr(self.language, "timer.stop", "关掉"),
-            bg=ui.get("bar_low") or ui.get("accent", "#c94b4b"),
-            fg="#ffffff",
-            font=ui["font_title"],
-            padx=22,
-            pady=6,
-        )
-        btn.pack(pady=(0, 16))
-
         def close(_event=None) -> None:
             self._dismiss_alarm_banner()
             if clock_module.normalize_clock_state(getattr(self, "clock_state", {})).get("timer_ringing"):
                 self._toggle_timer()
 
-        btn.bind("<Button-1>", close)
+        dlg._theme_close_action = close
+        btn = self._themed_dialog_button(body, tr(self.language, "timer.stop", "关掉"), close, danger=True)
+        btn.pack(fill="x", pady=(4, 0))
         dlg.bind("<Return>", close)
         dlg.bind("<Escape>", close)
         dlg.protocol("WM_DELETE_WINDOW", close)
-        try:
-            dlg.geometry(f"+{self.root.winfo_rootx() + 40}+{self.root.winfo_rooty() - 8}")
-        except tk.TclError:
-            pass
+        self._place_themed_window(dlg, self.root)
         self._alarm_dlg = dlg
         dlg.after(12000, lambda: close() if dlg.winfo_exists() else None)
 
@@ -2386,6 +2540,8 @@ class UsagePet:
             self._reveal_bars(jump=False)
             self.draw()
         self._rebuild_menu()
+        if self._show_context_menu(event.x_root, event.y_root):
+            return
         try:
             self.menu.tk_popup(event.x_root, event.y_root)
         finally:
@@ -2411,6 +2567,78 @@ class UsagePet:
         self._apply_layout()
         self.draw()
 
+    def _themed_window_frame(self, win: tk.Toplevel, title: str, *, urgent: bool = False) -> tk.Frame:
+        """Install draggable custom chrome derived from the active quota bubble."""
+        ui = style()
+        bubble = ui["bubble_fill"]
+        outline = ui["bubble_outline"]
+        accent = (ui.get("bar_low") or ui["accent"]) if urgent else ui["accent"]
+        title_fg = ui.get("pct") or ui["settings_text"]
+        mark_fg = "#ffffff" if urgent or ui.get("decoration") != "circuit" else "#10243A"
+        mark = "!" if urgent else ("⌁" if ui.get("decoration") == "circuit" else ("♥" if ui.get("decoration") == "bow" else "◆"))
+        win.overrideredirect(True)
+        win.configure(bg=outline)
+        border = tk.Frame(win, bg=ui["settings_bg"], highlightbackground=outline, highlightcolor=outline, highlightthickness=1, bd=0)
+        border.pack(fill="both", expand=True, padx=1, pady=1)
+        titlebar = tk.Frame(border, bg=bubble, cursor="fleur")
+        titlebar.pack(fill="x")
+        mark_label = tk.Label(titlebar, text=mark, bg=accent, fg=mark_fg, font=(ui["font_title"][0], 12, "bold"), padx=10, pady=7, cursor="fleur")
+        mark_label.pack(side="left", fill="y")
+        title_label = tk.Label(titlebar, text=title, bg=bubble, fg=title_fg, font=ui["font_title"], anchor="w", padx=10, pady=7, cursor="fleur")
+        title_label.pack(side="left", fill="x", expand=True)
+        close = tk.Button(
+            titlebar,
+            text="×",
+            command=lambda: getattr(win, "_theme_close_action", win.destroy)(),
+            bg=bubble,
+            fg=ui["settings_muted"],
+            activebackground=accent,
+            activeforeground=mark_fg,
+            font=(ui["font_title"][0], 13, "bold"),
+            relief="flat",
+            bd=0,
+            highlightthickness=0,
+            padx=11,
+            pady=4,
+            cursor="hand2",
+        )
+        close.pack(side="right", fill="y")
+        tk.Frame(border, height=2, bg=accent).pack(fill="x")
+        content = tk.Frame(border, bg=ui["settings_bg"])
+        content.pack(fill="both", expand=True)
+        win._theme_close_action = win.destroy
+        drag = {"x": 0, "y": 0}
+
+        def start(event) -> None:
+            drag["x"], drag["y"] = event.x_root - win.winfo_x(), event.y_root - win.winfo_y()
+
+        def move(event) -> None:
+            width, height = win.winfo_width(), win.winfo_height()
+            screen_w, screen_h = win.winfo_screenwidth(), win.winfo_screenheight()
+            x = max(0, min(event.x_root - drag["x"], screen_w - width))
+            y = max(0, min(event.y_root - drag["y"], screen_h - height))
+            win.geometry(f"+{x}+{y}")
+
+        for widget in (titlebar, mark_label, title_label):
+            widget.bind("<ButtonPress-1>", start)
+            widget.bind("<B1-Motion>", move)
+        win.bind("<Escape>", lambda _e: getattr(win, "_theme_close_action", win.destroy)())
+        return content
+
+    def _place_themed_window(self, win: tk.Toplevel, parent=None) -> None:
+        try:
+            win.update_idletasks()
+            owner = parent or self.root
+            width, height = win.winfo_reqwidth(), win.winfo_reqheight()
+            screen_w, screen_h = win.winfo_screenwidth(), win.winfo_screenheight()
+            x = owner.winfo_rootx() + max(12, owner.winfo_width() - 32)
+            y = owner.winfo_rooty() + 24
+            x = max(8, min(x, screen_w - width - 8))
+            y = max(8, min(y, screen_h - height - 8))
+            win.geometry(f"+{x}+{y}")
+        except tk.TclError:
+            pass
+
     def open_settings(self) -> None:
         self._note_activity()
         if self._settings is not None and self._settings.winfo_exists():
@@ -2423,58 +2651,130 @@ class UsagePet:
         lang = self.language
         _t = lambda key, zh, **values: tr(lang, key, zh, **values)
         win = tk.Toplevel(self.root)
+        win.withdraw()
         self._settings = win
-        win.title(_t("settings.title", f"设置 · v{APP_VERSION}", version=APP_VERSION))
+        window_title = _t("settings.title", f"设置 · v{APP_VERSION}", version=APP_VERSION)
+        win.title(window_title)
         self._apply_app_icon(win)
         win.attributes("-topmost", True)
         win.resizable(False, False)
         bg = ui["settings_bg"]
         card_bg = ui.get("inner", "#ffffff")
-        win.configure(bg=bg)
+        window_content = self._themed_window_frame(win, window_title)
         wrap = 420
         self._settings_paints: list = []
         self._skin_chips: dict[str, tk.Frame] = {}
         self._skin_var = tk.StringVar(value=self.skin_id)
 
-        shell = tk.Frame(win, bg=bg)
+        shell = tk.Frame(window_content, bg=bg)
         shell.pack(fill="both", expand=True, padx=18, pady=(14, 18))
 
-        controls = tk.Frame(shell, bg=bg)
-        controls.pack(fill="x", pady=(0, 12))
-        tk.Label(controls, text=_t("settings.language", "语言"), bg=bg, fg=ui["settings_fg"], font=ui["font_title"]).grid(row=0, column=0, sticky="w", padx=(0, 10), pady=(0, 8))
-        language_var = tk.StringVar(value=LANGUAGE_NAMES[self.language])
-        language_box = ttk.Combobox(
-            controls,
-            textvariable=language_var,
-            values=[LANGUAGE_NAMES[key] for key in SUPPORTED_LANGUAGES],
-            state="readonly",
-            width=20,
+        accent = ui.get("accent", "#c94b4b")
+        select_bg = ui.get("settings_select", card_bg)
+        active_bg = ui.get("bar_track", select_bg)
+        accent_text = "#10243A" if ui.get("decoration") == "circuit" else "#ffffff"
+        decoration = ui.get("decoration") or "none"
+        theme_mark = "⌁" if decoration == "circuit" else ("♥" if decoration == "bow" else "◆")
+
+        hero = tk.Frame(
+            shell,
+            bg=card_bg,
+            highlightbackground=accent,
+            highlightcolor=accent,
+            highlightthickness=2,
+            bd=0,
         )
-        language_box.grid(row=0, column=1, sticky="ew", pady=(0, 8))
-        tk.Label(controls, text=_t("settings.category", "设置分类"), bg=bg, fg=ui["settings_fg"], font=ui["font_title"]).grid(row=1, column=0, sticky="w", padx=(0, 10))
-        category_var = tk.StringVar()
-        category_box = ttk.Combobox(controls, textvariable=category_var, state="readonly", width=20)
-        category_box.grid(row=1, column=1, sticky="ew")
+        hero.pack(fill="x", pady=(0, 12))
+        tk.Label(hero, text=theme_mark, bg=accent, fg=accent_text, font=(ui["font_title"][0], 15, "bold"), padx=10, pady=8).pack(side="left", fill="y")
+        hero_copy = tk.Frame(hero, bg=card_bg)
+        hero_copy.pack(side="left", fill="both", expand=True, padx=12, pady=7)
+        tk.Label(hero_copy, text=_t("settings.title_short", "个性化设置"), bg=card_bg, fg=ui["settings_fg"], font=ui["font_title"], anchor="w").pack(fill="x")
+        current_skin = load_skin_spec(self.skin_id)
+        skin_name = str(current_skin.get("displayName") or self.skin_id)
+        if lang == "en" and self.skin_id == "megumi-kato":
+            skin_name = "Megumi Kato"
+        tk.Label(hero_copy, text=_t("settings.theme_active", "当前主题：{name}", name=skin_name), bg=card_bg, fg=ui["settings_muted"], font=ui["font"], anchor="w").pack(fill="x")
+
+        controls_wrap = tk.Frame(shell, bg=card_bg, highlightbackground=ui["bubble_outline"], highlightthickness=1, bd=0)
+        controls_wrap.pack(fill="x", pady=(0, 12))
+        controls = tk.Frame(controls_wrap, bg=card_bg)
+        controls.pack(fill="x", padx=12, pady=10)
+
+        def themed_dropdown(parent: tk.Frame, value: str, choices: list[tuple[str, str]], command) -> tk.Menubutton:
+            display = tk.StringVar(value=dict(choices).get(value, value) + "   ▾")
+            button = tk.Menubutton(
+                parent,
+                textvariable=display,
+                bg=select_bg,
+                fg=ui["settings_text"],
+                activebackground=active_bg,
+                activeforeground=ui["settings_text"],
+                font=ui["font_ui"],
+                relief="flat",
+                bd=0,
+                highlightthickness=1,
+                highlightbackground=ui["bubble_outline"],
+                highlightcolor=accent,
+                anchor="w",
+                padx=10,
+                pady=5,
+                cursor="hand2",
+            )
+            popup = tk.Menu(
+                button,
+                tearoff=0,
+                bg=card_bg,
+                fg=ui["settings_text"],
+                activebackground=accent,
+                activeforeground=accent_text,
+                font=ui["font_ui"],
+                bd=0,
+            )
+            for choice, label in choices:
+                def select(selected=choice, shown=label) -> None:
+                    display.set(shown + "   ▾")
+                    command(selected)
+                popup.add_command(label=label, command=select)
+            button.configure(menu=popup)
+            return button
+
+        section_labels = {
+            "appearance": _t("section.appearance", "形象"),
+            "clock": _t("section.clock", "时钟板块"),
+            "quota": _t("section.quota", "额度板块"),
+            "startup": _t("section.startup", "随软件启动"),
+            "update": _t("section.update", "更新"),
+            "uninstall": _t("section.uninstall", "卸载"),
+        }
+        selected_category = getattr(self, "_settings_category", "appearance")
+        if selected_category not in section_labels:
+            selected_category = "appearance"
+
+        tk.Label(controls, text=_t("settings.language", "语言"), bg=card_bg, fg=ui["settings_muted"], font=ui["font"], anchor="w").grid(row=0, column=0, sticky="w", padx=(0, 12), pady=(0, 8))
+        tk.Label(controls, text=_t("settings.category", "设置分类"), bg=card_bg, fg=ui["settings_muted"], font=ui["font"], anchor="w").grid(row=1, column=0, sticky="w", padx=(0, 12))
         controls.columnconfigure(1, weight=1)
 
         pages_host = tk.Frame(shell, bg=bg, width=440, height=330)
         pages_host.pack(fill="both", expand=True)
         pages_host.pack_propagate(False)
-        pages: list[tuple[str, tk.Frame]] = []
+        pages: dict[str, tk.Frame] = {}
         current_page: tk.Frame | None = None
 
-        def heading(text: str) -> None:
+        def heading(key: str) -> None:
             nonlocal current_page
             current_page = tk.Frame(pages_host, bg=bg)
-            pages.append((text, current_page))
+            pages[key] = current_page
+            title_row = tk.Frame(current_page, bg=bg)
+            title_row.pack(fill="x", pady=(2, 8))
+            tk.Frame(title_row, width=5, height=22, bg=accent).pack(side="left", padx=(0, 9))
             tk.Label(
-                current_page,
-                text=text,
+                title_row,
+                text=section_labels[key],
                 bg=bg,
                 fg=ui["settings_fg"],
                 font=ui["font_title"],
                 anchor="w",
-            ).pack(fill="x", pady=(2, 8))
+            ).pack(side="left", fill="x", expand=True)
 
         def hint(text: str) -> None:
             tk.Label(
@@ -2501,6 +2801,27 @@ class UsagePet:
             inner = tk.Frame(wrap_fr, bg=card_bg)
             inner.pack(fill="x", padx=12, pady=8)
             return inner
+
+        def add_action(parent: tk.Frame, text: str, command, *, primary: bool = False, danger: bool = False) -> None:
+            fill = (ui.get("bar_low") or accent) if danger else (accent if primary else select_bg)
+            foreground = "#ffffff" if danger else (accent_text if primary else ui["settings_text"])
+            tk.Button(
+                parent,
+                text=text,
+                command=command,
+                bg=fill,
+                fg=foreground,
+                activebackground=active_bg if not primary and not danger else fill,
+                activeforeground=foreground,
+                font=ui["font_ui"],
+                relief="flat",
+                bd=0,
+                highlightthickness=0,
+                cursor="hand2",
+                anchor="center",
+                padx=12,
+                pady=7,
+            ).pack(fill="x", pady=4)
 
         def add_switch(parent: tk.Frame, text: str, var: tk.BooleanVar, command) -> None:
             row = tk.Frame(parent, bg=card_bg)
@@ -2536,10 +2857,14 @@ class UsagePet:
                 _cmd()
 
             cv.bind("<Button-1>", click)
+            row.bind("<Button-1>", click)
+            for child in row.winfo_children():
+                if child is not cv:
+                    child.bind("<Button-1>", click)
             self._settings_paints.append(paint)
             paint()
 
-        heading(_t("section.appearance", "形象"))
+        heading("appearance")
         chips = tk.Frame(current_page, bg=bg)
         chips.pack(fill="x")
         skins = list_skins()
@@ -2550,7 +2875,7 @@ class UsagePet:
             chip.pack(side="left", fill="x", expand=True, padx=(0, 8) if i < len(skins) - 1 else 0)
             name = tk.Label(
                 chip,
-                text=str(spec.get("displayName") or sid),
+                text=("Megumi Kato" if lang == "en" and sid == "megumi-kato" else str(spec.get("displayName") or sid)),
                 bg=card_bg,
                 fg=ui["settings_fg"],
                 font=ui["font_title"],
@@ -2575,7 +2900,7 @@ class UsagePet:
         self._paint_skin_chips()
         hint(_t("skin.hint", "形象决定角色、配色和装饰。Original 是科技蓝，加藤惠是暖色圆角。"))
 
-        heading(_t("section.clock", "时钟板块"))
+        heading("clock")
         inner = card()
         self._clock_vars = {}
         clock_labels = {"time": _t("clock.time", "显示时间"), "timer": _t("clock.timer", "闹钟与秒表")}
@@ -2585,22 +2910,24 @@ class UsagePet:
             add_switch(inner, clock_labels[key], var, lambda k=key: self._on_toggle_clock(k))
         clock_mod = self._modules.get("clock")
         clock_perm = clock_mod.spec.permission_hint() if clock_mod is not None else ""
-        hint(_t("clock.hint", "本地功能，不需要账号。展开后点顶部「时钟 / 额度」切换。闹钟按主题绘制，可倒计时或秒表。时间到会弹窗、跳跃，并响一声短提示音。") + (f" {clock_perm}。" if clock_perm and lang == "zh-CN" else ""))
+        permission = f" {clock_perm}。" if lang == "zh-CN" and clock_perm else " " + _t("clock.permission", "")
+        hint(_t("clock.hint", "本地功能，不需要账号。展开后点顶部「时钟 / 额度」切换。闹钟按主题绘制，可倒计时或秒表。时间到会弹窗、跳跃，并响一声短提示音。") + permission)
 
-        heading(_t("section.quota", "额度板块"))
+        heading("quota")
         inner = card()
         self._enabled_vars = {}
+        settings_pools = build_pools(None, language=lang)
         for key in BUBBLE_ROWS:
             var = tk.BooleanVar(value=self.enabled.get(key, True))
             self._enabled_vars[key] = var
-            meta = POOL_META[key]
-            tag = meta['tag'] if lang == "zh-CN" else {"sg": "Weekly", "bot": "Weekly", "cm": "Monthly", "om": "Monthly", "cx": "5h + weekly"}.get(key, meta['tag'])
-            add_switch(inner, f"{meta['title']}  {tag}", var, lambda k=key: self._on_toggle(k))
+            meta = settings_pools[key]
+            add_switch(inner, f"{meta['title']}  {meta['tag']}", var, lambda k=key: self._on_toggle(k))
         quota_mod = self._modules.get("quota")
         perm = quota_mod.spec.permission_hint() if quota_mod is not None else ""
-        hint(_t("quota.hint", "可选信息模块。关掉全部来源后不再显示该板块，桌宠仍可单独使用。") + (f" {perm}。" if perm and lang == "zh-CN" else ""))
+        permission = f" {perm}。" if lang == "zh-CN" and perm else " " + _t("quota.permission", "")
+        hint(_t("quota.hint", "可选信息模块。关掉全部来源后不再显示该板块，桌宠仍可单独使用。") + permission)
 
-        heading(_t("section.startup", "随软件启动"))
+        heading("startup")
         inner = card()
         self._grok_start_var = tk.BooleanVar(value=grok_autostart_on())
         self._cursor_start_var = tk.BooleanVar(value=cursor_autostart_on())
@@ -2608,7 +2935,7 @@ class UsagePet:
         add_switch(inner, _t("startup.cursor", "随 Cursor 启动"), self._cursor_start_var, self._on_toggle_cursor_start)
         hint(_t("startup.hint", "打开 Grok 或 Cursor 后几秒内出现。登录 Windows 后会在后台等待这两个软件。"))
 
-        heading(_t("section.update", "更新"))
+        heading("update")
         inner = card()
         self._check_updates_var = tk.BooleanVar(value=self.check_updates)
         add_switch(inner, _t("update.check_start", "启动后检查 GitHub 新版本"), self._check_updates_var, self._on_toggle_check_updates)
@@ -2623,87 +2950,66 @@ class UsagePet:
             anchor="w",
         )
         self._update_status.pack(fill="x", pady=(4, 4))
-        tk.Button(
-            inner,
-            text=_t("update.check_now", "现在检查"),
-            command=lambda: self._check_update_now(manual=True),
-            bg=card_bg,
-            fg=ui["settings_text"],
-            font=ui["font_ui"],
-            activebackground=ui.get("settings_select", card_bg),
-            activeforeground=ui["settings_text"],
-            relief="flat",
-            bd=0,
-            highlightthickness=0,
-            cursor="hand2",
-            anchor="w",
-        ).pack(fill="x", pady=2)
-        tk.Button(
-            inner,
-            text=_t("update.install", "下载并安装"),
-            command=self._apply_update,
-            bg=card_bg,
-            fg=ui["settings_text"],
-            font=ui["font_ui"],
-            activebackground=ui.get("settings_select", card_bg),
-            activeforeground=ui["settings_text"],
-            relief="flat",
-            bd=0,
-            highlightthickness=0,
-            cursor="hand2",
-            anchor="w",
-        ).pack(fill="x", pady=2)
+        add_action(inner, _t("update.check_now", "现在检查"), lambda: self._check_update_now(manual=True))
+        add_action(inner, _t("update.install", "下载并安装"), self._apply_update, primary=True)
         hint(_t("update.hint", "只从 GitHub Release 下载官方 zip，校验 SHA256 后才会替换。不会静默安装。源码运行只能打开网页，不会改源码目录。"))
 
-        heading(_t("section.uninstall", "卸载"))
+        heading("uninstall")
         inner = card()
-        tk.Button(
-            inner,
-            text=_t("uninstall.action", "清除本机数据并退出"),
-            command=self._confirm_purge,
-            bg=card_bg,
-            fg=ui["settings_text"],
-            font=ui["font_ui"],
-            activebackground=ui.get("settings_select", card_bg),
-            activeforeground=ui["settings_text"],
-            relief="flat",
-            bd=0,
-            highlightthickness=0,
-            cursor="hand2",
-            anchor="w",
-        ).pack(fill="x", pady=2)
+        add_action(inner, _t("uninstall.action", "清除本机数据并退出"), self._confirm_purge, danger=True)
         hint(_t("uninstall.hint", "删除自启、桌面快捷方式和额度快照，然后退出。不会退出 Grok / Cursor / Codex，也不会删除程序文件夹。"))
 
-        category_box.configure(values=[name for name, _page in pages])
-        category_var.set(pages[0][0])
-
-        def show_page(_event=None) -> None:
-            selected = category_var.get()
-            for name, page in pages:
+        def show_page(selected: str) -> None:
+            self._settings_category = selected
+            for key, page in pages.items():
                 page.pack_forget()
-                if name == selected:
+                if key == selected:
                     page.pack(fill="both", expand=True)
 
-        def change_language(_event=None) -> None:
-            selected = next((code for code, name in LANGUAGE_NAMES.items() if name == language_var.get()), self.language)
+        def change_language(selected: str) -> None:
             if selected == self.language:
                 return
-            geometry = win.geometry()
             self.language = selected
             self.persist()
             self._rebuild_menu()
             self.draw()
-            win.destroy()
-            self._settings = None
-            self.open_settings()
-            if self._settings is not None and self._settings.winfo_exists():
-                self._settings.geometry(geometry)
+            self._replace_settings_window()
 
-        category_box.bind("<<ComboboxSelected>>", show_page)
-        language_box.bind("<<ComboboxSelected>>", change_language)
-        show_page()
+        language_box = themed_dropdown(controls, self.language, [(key, LANGUAGE_NAMES[key]) for key in SUPPORTED_LANGUAGES], change_language)
+        language_box.grid(row=0, column=1, sticky="ew", pady=(0, 8))
+        category_box = themed_dropdown(controls, selected_category, list(section_labels.items()), show_page)
+        category_box.grid(row=1, column=1, sticky="ew")
+        show_page(selected_category)
 
-        win.protocol("WM_DELETE_WINDOW", win.destroy)
+        win._theme_close_action = win.destroy
+        restore_geometry = getattr(self, "_settings_restore_geometry", None)
+        self._settings_restore_geometry = None
+        if restore_geometry:
+            win.geometry(restore_geometry)
+        else:
+            self._place_themed_window(win, self.root)
+        win.update_idletasks()
+        win.deiconify()
+        win.lift()
+        win.focus_force()
+
+    def _replace_settings_window(self) -> None:
+        old = getattr(self, "_settings", None)
+        geometry = None
+        if old is not None:
+            try:
+                if old.winfo_exists():
+                    geometry = old.geometry()
+            except tk.TclError:
+                old = None
+        self._settings = None
+        self._settings_restore_geometry = geometry
+        self.open_settings()
+        if old is not None and old is not self._settings:
+            try:
+                old.destroy()
+            except tk.TclError:
+                pass
 
     def _paint_skin_chips(self) -> None:
         ui = style()
@@ -2746,36 +3052,84 @@ class UsagePet:
 
     def _on_skin(self) -> None:
         want = str(self._skin_var.get() or "")
-        if not want or want == self.skin_id:
+        if not want or want == self.skin_id or self._skin_switching:
             return
         if not skin_ready(want):
             self._skin_var.set(self.skin_id)
-            self._toast(
-                "还没有图集。\n请把 spritesheet.webp 放到：\n"
-                + str(skin_folder(want))
-                + "\n（说明见 素材说明.txt）"
-            )
+            path = skin_folder(want)
+            self._toast(tr(self.language, "skin.assets_missing", "还没有图集。\n请把 spritesheet.webp 放到：\n" + str(path) + "\n（说明见 素材说明.txt）", path=path))
             return
-        self.skin_id = activate_skin(want)
-        self._photos.pop("_app_icon", None)
-        self._load_sprites()
+        settings = self._settings
+        if settings is None or not settings.winfo_exists():
+            self._finish_skin_switch(want)
+            return
+        self._skin_switching = True
+        ui = style()
+        spec = load_skin_spec(want)
+        name = str(spec.get("displayName") or want)
+        if self.language == "en" and want == "megumi-kato":
+            name = "Megumi Kato"
+        overlay = tk.Frame(
+            settings,
+            bg=ui["bubble_fill"],
+            highlightbackground=ui["accent"],
+            highlightthickness=2,
+            bd=0,
+            cursor="watch",
+        )
+        overlay.place(relx=0.5, rely=0.5, anchor="center")
+        mark_fg = "#10243A" if ui.get("decoration") == "circuit" else "#ffffff"
+        tk.Label(
+            overlay,
+            text="⌁" if ui.get("decoration") == "circuit" else "♥",
+            bg=ui["accent"],
+            fg=mark_fg,
+            font=(ui["font_title"][0], 14, "bold"),
+            padx=18,
+            pady=8,
+            cursor="watch",
+        ).pack(fill="x")
+        tk.Label(
+            overlay,
+            text=tr(self.language, "settings.applying_theme", "正在应用 {name}…", name=name),
+            bg=ui["bubble_fill"],
+            fg=ui.get("pct") or ui["settings_text"],
+            font=ui["font_title"],
+            padx=26,
+            pady=14,
+            cursor="watch",
+        ).pack(fill="x")
+        settings.configure(cursor="watch")
+        settings.update_idletasks()
+        self.root.after(16, lambda: self._finish_skin_switch(want))
+
+    def _finish_skin_switch(self, want: str) -> None:
+        try:
+            self.skin_id = activate_skin(want)
+            self._photos.pop("_app_icon", None)
+            self._load_sprites()
+        except Exception as exc:
+            self._skin_switching = False
+            settings = getattr(self, "_settings", None)
+            if settings is not None:
+                try:
+                    settings.configure(cursor="")
+                except tk.TclError:
+                    pass
+            self._toast(tr(self.language, "settings.theme_failed", f"无法应用主题：{exc}", error=exc))
+            return
         self._play_oneshot("waving")
         self._note_activity()
         self._apply_app_icon(self.root)
-        settings_geom = None
-        if self._settings is not None and self._settings.winfo_exists():
-            settings_geom = self._settings.geometry()
-            self._settings.destroy()
-            self._settings = None
+        settings_open = self._settings is not None and self._settings.winfo_exists()
         self.persist()
         self._apply_layout()
         self.draw()
-        if settings_geom:
-            self.open_settings()
-            if self._settings is not None and self._settings.winfo_exists():
-                self._settings.geometry(settings_geom)
+        if settings_open:
+            self._replace_settings_window()
         else:
             self._paint_skin_chips()
+        self._skin_switching = False
 
     def _on_toggle(self, key: str) -> None:
         var = self._enabled_vars.get(key)
@@ -2992,6 +3346,7 @@ class UsagePet:
 
     def quit(self, *, keep_data: bool = True, mark_dismissed: bool = True) -> None:
         self._closing = True
+        self._dismiss_context_menu()
         self._dismiss_alarm_banner()
         if keep_data and not self._preview_mode:
             self.persist()
@@ -3033,49 +3388,32 @@ class UsagePet:
             self._toast(tr(self.language, "shortcut.failed", f"创建失败：{exc}", error=exc))
 
     def _toast(self, text: str) -> None:
-        ui = style()
-        dlg = tk.Toplevel(self.root)
-        dlg.title(tr(self.language, "generic.notice", "提示"))
-        dlg.attributes("-topmost", True)
-        dlg.resizable(False, False)
-        dlg.configure(bg=ui["settings_bg"])
-        self._apply_app_icon(dlg)
+        title = tr(self.language, "generic.notice", "提示")
+        dlg, body, ui = self._themed_dialog(title)
         tk.Label(
-            dlg,
+            body,
             text=text,
-            bg=ui["settings_bg"],
+            bg=ui.get("inner", ui["settings_bg"]),
             fg=ui["settings_text"],
             font=ui["font_ui"],
             wraplength=280,
             justify="left",
-        ).pack(padx=18, pady=(16, 10))
-        btn = tk.Label(
-            dlg,
-            text=tr(self.language, "generic.ok", "好"),
-            bg=ui.get("accent", "#c94b4b"),
-            fg="#ffffff",
-            font=ui["font_title"],
-            padx=20,
-            pady=6,
-        )
-        btn.pack(pady=(0, 16))
-        btn.bind("<Button-1>", lambda _e: dlg.destroy())
+        ).pack(fill="x", pady=(0, 12))
+        btn = self._themed_dialog_button(body, tr(self.language, "generic.ok", "好"), dlg.destroy, primary=True)
+        btn.pack(fill="x")
         dlg.bind("<Return>", lambda _e: dlg.destroy())
+        dlg.bind("<Escape>", lambda _e: dlg.destroy())
         dlg.transient(self.root)
         dlg.grab_set()
+        self._place_themed_window(dlg, self.root)
 
     def _confirm_purge(self) -> None:
-        ui = style()
         remove_program = validated_self_delete_dir() is not None
         parent = self._settings if self._settings is not None and self._settings.winfo_exists() else self.root
-        dlg = tk.Toplevel(parent)
-        dlg.title(tr(self.language, "purge.title", "清除本机数据"))
-        dlg.attributes("-topmost", True)
-        dlg.resizable(False, False)
-        dlg.configure(bg=ui["settings_bg"])
-        self._apply_app_icon(dlg)
+        title = tr(self.language, "purge.title", "清除本机数据")
+        dlg, body, ui = self._themed_dialog(title, parent=parent, urgent=True)
         tk.Label(
-            dlg,
+            body,
             text=tr(self.language, "purge.body_portable" if remove_program else "purge.body_source", (
                 "将删除自启、桌面快捷方式和额度快照，然后退出宠物。\n"
                 "不会动 Grok / Cursor / Codex 的登录。\n"
@@ -3085,14 +3423,14 @@ class UsagePet:
                     else "源码 clone 或未验证目录请自行删除。"
                 )
             )),
-            bg=ui["settings_bg"],
+            bg=ui.get("inner", ui["settings_bg"]),
             fg=ui["settings_text"],
             font=ui["font_ui"],
             wraplength=300,
             justify="left",
-        ).pack(padx=18, pady=(16, 10))
-        row = tk.Frame(dlg, bg=ui["settings_bg"])
-        row.pack(fill="x", padx=18, pady=(0, 14))
+        ).pack(fill="x", pady=(0, 14))
+        row = tk.Frame(body, bg=ui.get("inner", ui["settings_bg"]))
+        row.pack(fill="x")
 
         def cancel() -> None:
             dlg.destroy()
@@ -3101,46 +3439,31 @@ class UsagePet:
             dlg.destroy()
             self._run_purge()
 
-        tk.Button(
-            row,
-            text=tr(self.language, "generic.cancel", "取消"),
-            command=cancel,
-            bg=ui.get("inner", "#ffffff"),
-            fg=ui["settings_text"],
-            font=ui["font"],
-            relief="flat",
-            bd=0,
-        ).pack(side="right")
-        tk.Button(
-            row,
-            text=tr(self.language, "purge.full", "完整卸载并退出") if remove_program else tr(self.language, "purge.clear", "清除并退出"),
-            command=confirm,
-            bg=ui.get("accent", "#c94b4b"),
-            fg="#ffffff",
-            font=ui["font_title"],
-            relief="flat",
-            bd=0,
-        ).pack(side="right", padx=(0, 8))
+        dlg._theme_close_action = cancel
+        self._themed_dialog_button(row, tr(self.language, "generic.cancel", "取消"), cancel).pack(side="right")
+        confirm_text = tr(self.language, "purge.full", "完整卸载并退出") if remove_program else tr(self.language, "purge.clear", "清除并退出")
+        self._themed_dialog_button(row, confirm_text, confirm, danger=True).pack(side="right", padx=(0, 8))
         dlg.bind("<Escape>", lambda _e: cancel())
         dlg.transient(parent)
         dlg.grab_set()
         dlg.focus_force()
+        self._place_themed_window(dlg, parent)
 
     def _run_purge(self) -> None:
         result = purge_local_residue()
         if result["errors"]:
-            self._toast(format_purge_report(result))
+            self._toast(format_purge_report(result, language=self.language))
             self.root.after(50, lambda: self.quit(keep_data=False))
             return
         try:
             program_scheduled = schedule_self_delete()
         except Exception as exc:
             result["errors"].append(f"程序文件夹：{exc}")
-            self._toast(format_purge_report(result))
+            self._toast(format_purge_report(result, language=self.language))
             self.root.after(50, lambda: self.quit(keep_data=False))
             return
         if not program_scheduled and getattr(sys, "frozen", False):
-            self._toast(format_purge_report(result))
+            self._toast(format_purge_report(result, language=self.language))
             self.root.after(800, lambda: self.quit(keep_data=False))
             return
         self.quit(keep_data=False)
@@ -3164,7 +3487,7 @@ class UsagePet:
             else:
                 subprocess.Popen(["xdg-open", path], start_new_session=True)
         except Exception as exc:
-            self._toast(f"无法打开目录：{exc}")
+            self._toast(tr(self.language, "data.open_failed", f"无法打开目录：{exc}", error=exc))
             return
         self.root.after(200, self._force_front)
 

@@ -1,9 +1,9 @@
-# Grok 额度桌宠
+# AI Quota Pet / AI 额度桌宠
 
-**Grok usage desktop pet** · [English](README.md) · 中文
+**会随皮肤变化的 Windows AI 额度桌宠** · [English](README.md) · 中文
 
 <p align="center">
-  <img src="docs/preview.gif" alt="Grok 额度桌宠：SuperGrok、Grok Bot、Cursor、Codex 余量" />
+  <img src="docs/preview.gif" alt="AI 额度桌宠：SuperGrok、Grok Bot、Cursor、Codex 余量" />
 </p>
 
 Windows 上的非官方透明桌宠，用来看 SuperGrok 周额度、Grok Bot 周额度、Cursor 两个月额度池，以及 Codex（一条上 5 小时同色、周额度略深）。不是 xAI、Cursor 或 OpenAI 官方软件。账单接口以后可能会变。
@@ -12,9 +12,9 @@ Windows 上的非官方透明桌宠，用来看 SuperGrok 周额度、Grok Bot �
 
 ## 安装
 
-当前版本：**0.3.14**（GitHub 标签 `v0.3.14`）。
+当前版本：**0.3.15**（GitHub 标签 `v0.3.15`）。
 
-从 [最新 Release](https://github.com/MGMTopia/grok-usage-pet/releases/latest) 下载 **`GrokUsagePet-v0.3.14-Windows-x64.zip`**。不必装 Python，也不用自己编译。
+从 [最新 Release](https://github.com/MGMTopia/grok-usage-pet/releases/latest) 下载 **`GrokUsagePet-v0.3.15-Windows-x64.zip`**。不必装 Python，也不用自己编译。
 
 1. 解压**整个文件夹**，不要只拷贝 exe。
 2. 本机先登录一次（登哪个就显示哪条，不必一直开着对应软件）：
@@ -40,6 +40,8 @@ Windows 10/11。数据在 `%LOCALAPPDATA%\GrokUsagePet`。设置 → 卸载，�
 
 更完整的操作说明：[使用说明.txt](使用说明.txt)
 
+项目对外名称从本版起更新为 **AI Quota Pet / AI 额度桌宠**，以覆盖 Grok、Cursor、Codex 及未来的可选信息模块。为保证原地升级，v0.x 继续沿用 `GrokUsagePet.exe`、`%LOCALAPPDATA%\GrokUsagePet`、现有仓库地址和更新通道；后续兼容方案见[路线图](docs/ROADMAP.zh-CN.md)。
+
 ## 用法
 
 - 平时只显示角色，窗口其余部分点得过去
@@ -50,7 +52,9 @@ Windows 10/11。数据在 `%LOCALAPPDATA%\GrokUsagePet`。设置 → 卸载，�
 - 双击：固定 / 取消固定额度条
 - 右键：刷新、设置主题、创建桌面快捷方式或退出
 - 设置 → 时钟 / 额度：两个板块分开开关，展开后可切换。倒计时结束会切到时钟、弹出「时间到」、跳跃并响提示音
-- 设置窗口使用分类下拉菜单，一次只显示一个板块；顶部语言下拉可即时切换简体中文 / English，并会记住选择
+- 右键菜单不再使用系统默认样式，会跟随当前皮肤显示清晰的标题、悬停反馈、键盘焦点和危险操作颜色；设置、提示、倒计时提醒与卸载确认采用可拖动的自定义窗口栏，并直接继承额度气泡的填充、描边、强调色和文字颜色
+- 设置窗口使用随当前皮肤变化的分类菜单，一次只显示一个板块；标题、菜单、卡片、开关和操作按钮统一继承皮肤配色与视觉语言。顶部语言菜单可即时切换简体中文 / English，并会记住选择
+- 切换皮肤时先显示即时主题进度反馈；新设置窗口在隐藏状态完整构建后原位替换旧窗口，并缓存每套皮肤的精灵帧，避免半成品窗口闪现与重复解码卡顿
 
 设置 → 更新：可检查 GitHub 新版本。exe 会校验 SHA256 后再替换；源码运行只会打开网页。
 

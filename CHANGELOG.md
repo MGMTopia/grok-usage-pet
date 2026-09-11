@@ -1,6 +1,30 @@
 # Changelog
 
-## Unreleased
+## 0.3.15 — 2026-09-11
+
+Unified themed windows, flicker-free skin switching, and AI Quota Pet branding. Git tag: `v0.3.15`.
+
+- Rename the public product identity to **AI Quota Pet / AI 额度桌宠** so it
+  reflects Grok, Cursor, Codex, and future optional information modules. Keep
+  the executable, data directory, repository URL, and updater identifiers
+  unchanged throughout v0.x for safe upgrades.
+
+- Finish English copy in the Settings usage panel, including every source name,
+  period label, and privacy/network permission note.
+- Unify Settings around the active skin: themed drop-down menus, accent header,
+  section rails, card borders, full-row switches, and consistent primary,
+  secondary, and destructive actions now follow each skin's visual tokens.
+- Replace the platform-styled right-click menu with a readable themed popup
+  that supports hover, keyboard focus, Escape, focus dismissal, and screen-edge
+  positioning. Apply the same themed shell and button hierarchy to notices,
+  countdown alerts, and uninstall confirmation.
+- Replace native title bars on Settings and dialogs with draggable custom chrome
+  derived directly from the quota bubble's fill, outline, accent, and text
+  tokens. Keep strong title/content/action hierarchy and bounded positioning.
+- Make skin switching flicker-free: build the replacement Settings window while
+  hidden, preserve its exact geometry, atomically swap it over the old window,
+  cache decoded Tk frames per skin, and show immediate themed progress feedback
+  while blocking duplicate switches.
 
 ## 0.3.14 — 2026-09-11
 

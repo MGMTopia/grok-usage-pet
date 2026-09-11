@@ -1,6 +1,6 @@
 # Contributing
 
-Grok Usage Pet is a small, local-first desktop utility. Focus changes on quota reliability, privacy, Windows packaging, animation quality, and maintainable skin support rather than expanding it into a general AI dashboard.
+AI Quota Pet is a small, local-first desktop utility. Focus changes on quota reliability, privacy, Windows packaging, animation quality, and maintainable skin support rather than expanding it into a general AI dashboard.
 
 ## Feedback
 
