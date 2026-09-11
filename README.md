@@ -12,9 +12,9 @@ Windows 上的非官方额度桌宠，用来看 SuperGrok 周额度、Grok Bot �
 
 ## 安装
 
-当前版本：**0.3.12**（`v0.3.12`）。
+当前版本：**0.3.13**（`v0.3.13`）。
 
-从 [GitHub Release](https://github.com/MGMTopia/grok-usage-pet/releases/latest) 下载 **`GrokUsagePet-v0.3.12-Windows-x64.zip`**。不必装 Python。
+从 [GitHub Release](https://github.com/MGMTopia/grok-usage-pet/releases/latest) 下载 **`GrokUsagePet-v0.3.13-Windows-x64.zip`**。不必装 Python。
 
 1. 解压**整个文件夹**，不要只拷贝 exe。
 2. 本机先登录一次（登哪个就显示哪条）：
@@ -42,7 +42,7 @@ Windows 10/11。数据在 `%LOCALAPPDATA%\GrokUsagePet`。设置 → 卸载，�
 
 Unofficial overlay for SuperGrok weekly, Grok Bot weekly, Cursor monthly, and Codex quota. Not an xAI, Cursor, or OpenAI product.
 
-Download **`GrokUsagePet-v0.3.12-Windows-x64.zip`** from the
+Download **`GrokUsagePet-v0.3.13-Windows-x64.zip`** from the
 [latest GitHub Release](https://github.com/MGMTopia/grok-usage-pet/releases/latest).
 Python is not required.
 
@@ -71,7 +71,7 @@ Windows 10/11.
 pythonw pet.py
 ```
 
-Fetching does not require Grok Build, Cursor, or Codex to be running. SuperGrok and ChatGPT-login Codex sessions can refresh their local OAuth credentials when needed; API-key Codex mode has no subscription quota percentage. Settings can enable a local clock panel (weekday and time, plus countdown or stopwatch) separately from quota.
+Fetching does not require Grok Build, Cursor, or Codex to be running. SuperGrok and ChatGPT-login Codex sessions can refresh their local OAuth credentials when needed; API-key Codex mode has no subscription quota percentage. Settings can enable a local clock panel (weekday and time, plus countdown or stopwatch) separately from quota. When a countdown finishes, the pet switches to the clock, shows a topmost “时间到” banner, jumps, and plays a short beep.
 
 ## Test
 
@@ -104,7 +104,7 @@ The preview renders fixed sample quotas and exits after three seconds without sa
 
 | Zip | What |
 |-----|------|
-| `GrokUsagePet-v0.3.12-Windows-x64.zip` | Current release (`GrokUsagePet.exe`). Rebuild with `pack-windows.ps1`. |
+| `GrokUsagePet-v0.3.13-Windows-x64.zip` | Current release (`GrokUsagePet.exe`). Rebuild with `pack-windows.ps1`. |
 | `GrokUsagePet-kawaii.zip` | Legacy v0.2.0 compatibility archive; not the current release. |
 
 Do not copy `auth.json`, Cursor `state.vscdb`, or `pet_state.json` into a zip.

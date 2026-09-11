@@ -12,9 +12,9 @@ Windows 上的非官方透明桌宠，用来看 SuperGrok 周额度、Grok Bot �
 
 ## 安装
 
-当前版本：**0.3.12**（GitHub 标签 `v0.3.12`）。
+当前版本：**0.3.13**（GitHub 标签 `v0.3.13`）。
 
-从 [最新 Release](https://github.com/MGMTopia/grok-usage-pet/releases/latest) 下载 **`GrokUsagePet-v0.3.12-Windows-x64.zip`**。不必装 Python，也不用自己编译。
+从 [最新 Release](https://github.com/MGMTopia/grok-usage-pet/releases/latest) 下载 **`GrokUsagePet-v0.3.13-Windows-x64.zip`**。不必装 Python，也不用自己编译。
 
 1. 解压**整个文件夹**，不要只拷贝 exe。
 2. 本机先登录一次（登哪个就显示哪条，不必一直开着对应软件）：
@@ -49,7 +49,7 @@ Windows 10/11。数据在 `%LOCALAPPDATA%\GrokUsagePet`。设置 → 卸载，�
 - 拖动角色移动位置
 - 双击：固定 / 取消固定额度条
 - 右键：刷新、设置主题、创建桌面快捷方式或退出
-- 设置 → 时钟 / 额度：两个板块分开开关，展开后可切换
+- 设置 → 时钟 / 额度：两个板块分开开关，展开后可切换。倒计时结束会切到时钟、弹出「时间到」、跳跃并响提示音
 
 设置 → 更新：可检查 GitHub 新版本。exe 会校验 SHA256 后再替换；源码运行只会打开网页。
 

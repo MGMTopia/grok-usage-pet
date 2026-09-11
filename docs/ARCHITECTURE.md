@@ -57,6 +57,8 @@ interface. `quota_module.py` calls `fetch_usage.py` and must catch provider erro
 `clock_module.py` is a local module: current time plus a themed alarm clock
 (countdown or stopwatch). Tech skins draw a circuit chronometer; Kato/soft
 skins draw a round twin-bell alarm. It does not refresh over the network.
+When a countdown reaches zero the pet switches to the clock panel, shows a
+topmost done banner, beeps, and may jump; waving and dragging still win.
 Quota and clock are separate hover panels with a themed switcher. The host isolates a module that raises.
 Disabled modules are not refreshed. Clock rows do not feed quota remaining
 reactions. Module reactions still go through `resolve_animation_state()`, so

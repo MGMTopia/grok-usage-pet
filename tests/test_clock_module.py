@@ -76,6 +76,14 @@ class ClockModuleTests(unittest.TestCase):
         later = clock_module.advance_timer(started, 10.0 + 61)
         self.assertTrue(later["timer_ringing"])
         self.assertFalse(later["timer_running"])
+        ringing_view = clock_module.clock_panel_view(
+            {"time": False, "timer": True},
+            later,
+            now=80.0,
+        )
+        self.assertEqual(ringing_view["timer_status"], "时间到")
+        self.assertTrue(ringing_view["timer_ringing"])
+        self.assertEqual(ringing_view["toggle_label"], "关掉")
         dismissed = clock_module.toggle_timer(later, 80.0)
         self.assertFalse(dismissed["timer_ringing"])
         hour, minute, second = clock_module.alarm_hand_angles(0, 15_000, countdown=True)
