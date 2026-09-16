@@ -1,0 +1,70 @@
+{
+  "id": "chujiu",
+  "displayName": "布偶猫初九",
+  "description": "以原始 canonical-base 为造型母版、由真实照片校准身份与体态的高还原像素布偶猫初九，保留慵懒趴卧、侧身翻滚与奶油色胸毛特征。",
+  "spritesheetPath": "spritesheet.webp",
+  "icon": "app.ico",
+  "iconPng": "app.png",
+  "spriteVersionNumber": 2,
+  "spriteEdgeMode": "matte-free",
+  "theme": {
+    "preset": "soft",
+    "bubbleStyle": "rounded",
+    "barStyle": "rounded",
+    "tipStyle": "rounded",
+    "decoration": "none",
+    "bubbleDecoration": "paw",
+    "bubbleFill": "#F7EBDD",
+    "bubbleOutline": "#A77C60",
+    "bubbleShadow": "#D6BFAA",
+    "label": "#5A3D31",
+    "labelHot": "#326987",
+    "barTrack": "#E7D3BF",
+    "barOk": "#639A76",
+    "barMid": "#C58D49",
+    "barLow": "#C65C59",
+    "barLayerLight": "#8BB99A",
+    "barLayerDark": "#4F8062",
+    "percentage": "#4B3027",
+    "tipFill": "#33241F",
+    "tipOutline": "#7CAFC9",
+    "tipTitle": "#B4D8E9",
+    "tipText": "#F7EBDD",
+    "spinner": "#3E7896",
+    "accent": "#3E7896",
+    "inner": "#FFF7ED",
+    "settingsBackground": "#F7EBDD",
+    "settingsForeground": "#4B3027",
+    "settingsMuted": "#806858",
+    "muted": "#806858"
+  },
+  "atlas": {
+    "width": 1536,
+    "height": 2288,
+    "cellWidth": 192,
+    "cellHeight": 208,
+    "columns": 8,
+    "rows": 11
+  },
+  "animations": {
+    "idle": { "row": 0, "frames": 6, "ms": 340 },
+    "running-right": { "row": 1, "frames": 8, "ms": 150 },
+    "running-left": { "row": 2, "frames": 8, "ms": 150 },
+    "waving": { "row": 3, "frames": 4, "ms": 210 },
+    "jumping": { "row": 4, "frames": 5, "ms": 190 },
+    "failed": { "row": 5, "frames": 8, "ms": 260 },
+    "waiting": { "row": 6, "frames": 6, "ms": 260 },
+    "running": { "row": 7, "frames": 6, "ms": 180 },
+    "review": { "row": 8, "frames": 6, "ms": 240 }
+  },
+  "look": {
+    "rows": [9, 10],
+    "framesPerRow": 8,
+    "origin": "up",
+    "order": "clockwise",
+    "directions": [
+      "000", "022.5", "045", "067.5", "090", "112.5", "135", "157.5",
+      "180", "202.5", "225", "247.5", "270", "292.5", "315", "337.5"
+    ]
+  }
+}

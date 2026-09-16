@@ -8,13 +8,15 @@
 
 Windows 上的非官方额度桌宠，用来看 SuperGrok 周额度、Grok Bot 周额度、Cursor 月额度，以及 Codex 余量。不是 xAI、Cursor 或 OpenAI 官方软件。程序代码是 MIT；角色素材见 [ASSETS_NOTICE.md](ASSETS_NOTICE.md)。
 
+当前打包三套形象：**Original / Pip**（默认原创）、**布偶猫初九**（原创）、**Megumi Kato**（可选非官方同人）。右键 → 设置 → 形象 切换。上面的预览仍是默认 Pip。
+
 更完整的中文说明：[使用说明.txt](使用说明.txt) · [README.zh-CN.md](README.zh-CN.md)
 
 ## 安装
 
-当前版本：**0.3.15**（`v0.3.15`）。
+当前版本：**0.3.16**（`v0.3.16`）。
 
-从 [GitHub Release](https://github.com/MGMTopia/grok-usage-pet/releases/latest) 下载 **`GrokUsagePet-v0.3.15-Windows-x64.zip`**。不必装 Python。
+从 [GitHub Release](https://github.com/MGMTopia/grok-usage-pet/releases/latest) 下载 **`GrokUsagePet-v0.3.16-Windows-x64.zip`**。不必装 Python。
 
 1. 解压**整个文件夹**，不要只拷贝 exe。
 2. 本机先登录一次（登哪个就显示哪条）：
@@ -42,13 +44,15 @@ Windows 10/11。数据在 `%LOCALAPPDATA%\GrokUsagePet`。设置 → 卸载，�
 
 Unofficial overlay for SuperGrok weekly, Grok Bot weekly, Cursor monthly, and Codex quota. Not an xAI, Cursor, or OpenAI product.
 
-Download **`GrokUsagePet-v0.3.15-Windows-x64.zip`** from the
+Download **`GrokUsagePet-v0.3.16-Windows-x64.zip`** from the
 [latest GitHub Release](https://github.com/MGMTopia/grok-usage-pet/releases/latest).
 Python is not required.
 
 1. Unzip the **whole folder**. Do not copy only the exe.
 2. Sign in to at least one source (`grok login`, Cursor, or ChatGPT-plan `codex login`).
 3. Double-click `GrokUsagePet.exe`.
+
+The zip includes three skins: **Original / Pip** (default, original), **布偶猫初九** (original ragdoll-cat companion), and **Megumi Kato** (optional unofficial fan theme). Switch them in Settings → Appearance. The preview GIF above stays the default Pip character.
 
 Windows 10/11.
 
@@ -108,7 +112,7 @@ The preview renders fixed sample quotas and exits after three seconds without sa
 
 | Zip | What |
 |-----|------|
-| `GrokUsagePet-v0.3.15-Windows-x64.zip` | Current release (`GrokUsagePet.exe`). Rebuild with `pack-windows.ps1`. |
+| `GrokUsagePet-v0.3.16-Windows-x64.zip` | Current release (`GrokUsagePet.exe`). Rebuild with `pack-windows.ps1`. |
 | `GrokUsagePet-kawaii.zip` | Legacy v0.2.0 compatibility archive; not the current release. |
 
 Do not copy `auth.json`, Cursor `state.vscdb`, or `pet_state.json` into a zip.
@@ -137,6 +141,7 @@ Do not copy `auth.json`, Cursor `state.vscdb`, or `pet_state.json` into a zip.
 - `tests/` — offline unit and smoke tests
 - `skins/megumi-kato/` — complete example skin
 - `skins/original/` — complete default Original/Pip skin
+- `skins/chujiu/` — complete 布偶猫初九 skin
 - `packaging/windows/` — portable launcher and watcher registration files
 - `docs/preview.gif` — README animation, regenerated with `docs/make_preview_gif.py`
 

@@ -14,6 +14,7 @@ DEFAULT_ATLAS = {
     "columns": 8,
     "rows": 11,
 }
+RELEASE_SKIN_IDS = ("original", "megumi-kato", "chujiu")
 MAX_ATLAS_DIMENSION = 4096
 MAX_ATLAS_PIXELS = 16_777_216
 MAX_ATLAS_GRID = 64
@@ -113,6 +114,11 @@ class SkinCatalog:
         spec.setdefault("spritesheetPath", "spritesheet.webp")
         spec.setdefault("icon", "app.ico")
         spec.setdefault("iconPng", "app.png")
+        edge_mode = spec.get("spriteEdgeMode")
+        spec["spriteEdgeMode"] = (
+            edge_mode if isinstance(edge_mode, str) and edge_mode in {"matte-free", "legacy-matte"}
+            else "matte-free"
+        )
         atlas = _safe_atlas(spec.get("atlas"))
         spec["atlas"] = atlas
         raw_animations = spec.get("animations") if isinstance(spec.get("animations"), dict) else {}

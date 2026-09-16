@@ -63,6 +63,7 @@ LEGACY_ASSETS = fu.resource_dir() / "assets"
 DEFAULT_SKIN_ID = "original"
 DEFAULT_THEME_PRESET = "soft"
 ASSETS = LEGACY_ASSETS
+SPRITE_EDGE_MODE = "matte-free"
 HOOK_FILE = fu.grok_home() / "hooks" / "usage-pet.json"
 CURSOR_HOOK_FILE = Path.home() / ".cursor" / "hooks.json"
 CURSOR_HOOK_MARKER = cursor_hooks.MARKER
@@ -239,6 +240,7 @@ _THEME_ENUM_KEYS = {
     "barStyle": ("bar_style", {"rounded", "square"}),
     "tipStyle": ("tip_style", {"rounded", "square"}),
     "decoration": ("decoration", {"none", "bow", "circuit"}),
+    "bubbleDecoration": ("bubble_decoration", {"none", "bow", "circuit", "paw", "beret", "pcb"}),
 }
 _SESSION_LAYOUT_KEYS = SESSION_LAYOUT_KEYS
 _ACTIVE_STYLE: dict | None = None
@@ -274,9 +276,10 @@ ONESHOT_ANIMS = {"jumping", "waving", "failed", "waiting"}
 LOOK_ROWS = ((9, 8), (10, 8))
 
 try:
-    from PIL import Image, ImageTk
+    from PIL import Image, ImageDraw, ImageTk
 except ImportError:
     Image = None
+    ImageDraw = None
     ImageTk = None
 
 
@@ -411,8 +414,40 @@ def list_skins() -> list[dict]:
     return SKIN_CATALOG.list_specs()
 
 
+def app_icon_paths(skin_id: str) -> tuple[Path, Path]:
+    folder = skin_folder(skin_id)
+    return folder / "app.ico", folder / "app.png"
+
+
+def load_skin_icon_image(skin_id: str, size: int | None = None):
+    if Image is None:
+        return None
+    ico, png = app_icon_paths(skin_id)
+    for path in (png, ico):
+        if not path.is_file():
+            continue
+        try:
+            image = Image.open(path).convert("RGBA")
+        except OSError:
+            continue
+        if size is not None:
+            side = max(16, int(size))
+            if image.size != (side, side):
+                resample = getattr(getattr(Image, "Resampling", Image), "NEAREST", Image.NEAREST)
+                image = image.resize((side, side), resample)
+        return image
+    return None
+
+
+def active_skin_id() -> str:
+    name = ASSETS.name
+    if (SKINS_DIR / name / "pet.json").is_file():
+        return name
+    return DEFAULT_SKIN_ID
+
+
 def activate_skin(skin_id: str) -> str:
-    global ASSETS, CELL_W, CELL_H, SPRITE_W, SPRITE_H, ATLAS_SIZE, ATLAS_NAME, ANIMATIONS, ANIM_MS, LOOK_ROWS, _ACTIVE_STYLE
+    global ASSETS, CELL_W, CELL_H, SPRITE_W, SPRITE_H, ATLAS_SIZE, ATLAS_NAME, ANIMATIONS, ANIM_MS, LOOK_ROWS, _ACTIVE_STYLE, SPRITE_EDGE_MODE
     if not skin_ready(skin_id):
         skin_id = DEFAULT_SKIN_ID
     spec = load_skin_spec(skin_id)
@@ -443,6 +478,7 @@ def activate_skin(skin_id: str) -> str:
     if not (folder / ATLAS_NAME).exists() and skin_id == DEFAULT_SKIN_ID:
         folder = LEGACY_ASSETS
     ASSETS = folder
+    SPRITE_EDGE_MODE = str(spec["spriteEdgeMode"])
     _ACTIVE_STYLE = resolve_theme(spec.get("theme"))
     return str(spec.get("id") or skin_id)
 
@@ -484,10 +520,14 @@ def resolve_theme(theme: object) -> dict:
     if preset_name not in _THEME_PRESETS:
         preset_name = DEFAULT_THEME_PRESET
     resolved = dict(STYLES[preset_name])
+    resolved["bubble_decoration"] = resolved["decoration"]
     for json_key, (style_key, allowed) in _THEME_ENUM_KEYS.items():
         raw = payload.get(json_key)
         if isinstance(raw, str) and raw in allowed:
             resolved[style_key] = raw
+    bubble_mark = payload.get("bubbleDecoration")
+    if not isinstance(bubble_mark, str) or bubble_mark not in {"none", "bow", "circuit", "paw", "beret", "pcb"}:
+        resolved["bubble_decoration"] = resolved["decoration"]
     for json_key, style_key in _THEME_COLOR_KEYS.items():
         parsed = _parse_hex_color(payload.get(json_key))
         if parsed is not None:
@@ -499,6 +539,174 @@ def resolve_theme(theme: object) -> dict:
         except (TypeError, ValueError):
             pass
     return resolved
+
+
+def _hex_rgb(value: str) -> tuple[int, int, int]:
+    parsed = _parse_hex_color(value) or "#000000"
+    return int(parsed[1:3], 16), int(parsed[3:5], 16), int(parsed[5:7], 16)
+
+
+def bubble_decoration_ops(mark: str, ui: dict) -> list[dict]:
+    """Canvas ops for the quota-bubble emblem, centered at (0, 0)."""
+    kind = mark if mark in {"bow", "circuit", "paw", "beret", "pcb"} else "none"
+    if kind == "bow":
+        red = ui.get("accent", "#c94b4b")
+        edge = _blend_hex(red, "#000000", 0.25)
+        inner = _blend_hex(red, "#ffffff", 0.28)
+        return [
+            {"op": "oval", "xy": (-8, -5, -1, 5), "fill": red, "outline": edge, "width": 1},
+            {"op": "oval", "xy": (1, -5, 8, 5), "fill": red, "outline": edge, "width": 1},
+            {"op": "oval", "xy": (-2.5, -3, 2.5, 3), "fill": inner, "outline": edge, "width": 1},
+        ]
+    if kind == "circuit":
+        accent = ui.get("accent", "#45DFF2")
+        return [
+            {"op": "line", "xy": (-20, 0, -7, 0), "fill": accent, "width": 2},
+            {"op": "line", "xy": (7, 0, 20, 0), "fill": accent, "width": 2},
+            {"op": "line", "xy": (0, -9, 0, 9), "fill": accent, "width": 2},
+            {"op": "oval", "xy": (-5, -5, 5, 5), "fill": "", "outline": accent, "width": 2},
+            {"op": "oval", "xy": (-22, -3, -16, 3), "fill": "", "outline": accent, "width": 1},
+            {"op": "oval", "xy": (16, -3, 22, 3), "fill": "", "outline": accent, "width": 1},
+        ]
+    if kind == "paw":
+        pad = ui["label"]
+        edge = ui["bubble_outline"]
+        ops = [
+            {"op": "oval", "xy": (dx - 3, dy - 3, dx + 3, dy + 3), "fill": pad, "outline": edge, "width": 1}
+            for dx, dy in ((-12, -6), (-4, -10), (4, -10), (12, -6))
+        ]
+        ops.append({"op": "oval", "xy": (-9, 0, 9, 11), "fill": pad, "outline": edge, "width": 1})
+        return ops
+    if kind == "beret":
+        ivory = "#FCF9FD"
+        fold = "#EAE3EE"
+        underside = _blend_hex(ui["label"], ui["bubble_outline"], 0.45)
+        return [
+            {
+                "op": "polygon",
+                "xy": (-18, 2, -8, -3, 9, -1, 19, 5, 13, 8, -8, 8),
+                "fill": underside,
+                "outline": ui["label"],
+                "width": 1,
+                "smooth": True,
+            },
+            {
+                "op": "polygon",
+                "xy": (-23, 2, -24, -8, -15, -16, 2, -19, 18, -13, 22, -4, 17, 2, 6, -2, -8, -2, -18, 5),
+                "fill": ivory,
+                "outline": ui["label"],
+                "width": 2,
+                "smooth": True,
+            },
+            {
+                "op": "line",
+                "xy": (-16, -2, -6, -8, 7, -9, 16, -4),
+                "fill": fold,
+                "width": 2,
+                "smooth": True,
+            },
+        ]
+    if kind == "pcb":
+        board = ui["bar_track"]
+        trace = ui["accent"]
+        edge = ui["bubble_outline"]
+        ops = [
+            {"op": "rect", "xy": (-22, -12, 22, 12), "fill": board, "outline": edge, "width": 2},
+        ]
+        for px in (-18, 18):
+            for py in (-8, 8):
+                ops.append({
+                    "op": "oval",
+                    "xy": (px - 1.5, py - 1.5, px + 1.5, py + 1.5),
+                    "fill": ui["bubble_fill"],
+                    "outline": trace,
+                    "width": 1,
+                })
+        ops.extend([
+            {"op": "line", "xy": (-13, -5, -4, -5, -4, 4, 11, 4), "fill": trace, "width": 2},
+            {"op": "line", "xy": (13, -6, 3, -6, 3, -2), "fill": trace, "width": 2},
+            {"op": "rect", "xy": (-2, -3, 6, 5), "fill": board, "outline": trace, "width": 1},
+            {"op": "oval", "xy": (-16, -7, -12, -3), "fill": trace, "outline": "", "width": 0},
+            {"op": "oval", "xy": (9, 2, 13, 6), "fill": trace, "outline": "", "width": 0},
+        ])
+        return ops
+    return []
+
+
+def paint_bubble_decoration(canvas, x: float, y: float, ui: dict, mark: str | None = None) -> None:
+    kind = mark if mark is not None else (ui.get("bubble_decoration") or "none")
+    for item in bubble_decoration_ops(kind, ui):
+        xy = tuple(coord + (x if i % 2 == 0 else y) for i, coord in enumerate(item["xy"]))
+        op = item["op"]
+        fill = item.get("fill") or ""
+        outline = item.get("outline") or ""
+        width = int(item.get("width") or 0)
+        smooth = bool(item.get("smooth"))
+        if op == "oval":
+            canvas.create_oval(*xy, fill=fill, outline=outline, width=width)
+        elif op == "rect":
+            canvas.create_rectangle(*xy, fill=fill, outline=outline, width=width)
+        elif op == "polygon":
+            canvas.create_polygon(*xy, fill=fill, outline=outline, width=max(1, width), smooth=smooth)
+        elif op == "line":
+            canvas.create_line(*xy, fill=fill or outline, width=max(1, width), smooth=smooth)
+
+
+def render_bubble_decoration_icon(ui: dict, size: int = 256):
+    if Image is None or ImageDraw is None:
+        raise RuntimeError("Pillow is required to render theme icons")
+    canvas = max(64, int(size))
+    img = Image.new("RGBA", (canvas, canvas), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    pad = canvas * 0.08
+    draw.rounded_rectangle(
+        (pad, pad, canvas - pad, canvas - pad),
+        radius=canvas * 0.22,
+        fill=_hex_rgb(ui["bubble_fill"]) + (255,),
+        outline=_hex_rgb(ui["bubble_outline"]) + (255,),
+        width=max(2, canvas // 64),
+    )
+    ops = bubble_decoration_ops(ui.get("bubble_decoration") or "none", ui)
+    if not ops:
+        return img
+    xs: list[float] = []
+    ys: list[float] = []
+    for item in ops:
+        xy = item["xy"]
+        xs.extend(xy[0::2])
+        ys.extend(xy[1::2])
+    min_x, max_x = min(xs), max(xs)
+    min_y, max_y = min(ys), max(ys)
+    box_w = max(8.0, max_x - min_x)
+    box_h = max(8.0, max_y - min_y)
+    inner = canvas * 0.62
+    scale = min(inner / box_w, inner / box_h)
+    ox = canvas / 2 - (min_x + max_x) / 2 * scale
+    oy = canvas / 2 - (min_y + max_y) / 2 * scale
+
+    def mapped(xy: tuple[float, ...]) -> list[float]:
+        out = []
+        for i, coord in enumerate(xy):
+            out.append(coord * scale + (ox if i % 2 == 0 else oy))
+        return out
+
+    for item in ops:
+        pts = mapped(item["xy"])
+        fill = item.get("fill") or ""
+        outline = item.get("outline") or ""
+        width = max(1, int(round((item.get("width") or 1) * scale)))
+        fill_rgb = _hex_rgb(fill) + (255,) if fill else None
+        outline_rgb = _hex_rgb(outline) + (255,) if outline else None
+        box = (pts[0], pts[1], pts[2], pts[3]) if len(pts) == 4 else None
+        if item["op"] == "oval" and box is not None:
+            draw.ellipse(box, fill=fill_rgb, outline=outline_rgb, width=width if outline_rgb else 0)
+        elif item["op"] == "rect" and box is not None:
+            draw.rectangle(box, fill=fill_rgb, outline=outline_rgb, width=width if outline_rgb else 0)
+        elif item["op"] == "polygon":
+            draw.polygon(list(zip(pts[0::2], pts[1::2])), fill=fill_rgb, outline=outline_rgb)
+        elif item["op"] == "line":
+            draw.line(list(zip(pts[0::2], pts[1::2])), fill=outline_rgb or fill_rgb, width=width)
+    return img
 
 
 def style() -> dict:
@@ -627,14 +835,31 @@ def load_clock_state() -> dict:
     return clock_module.normalize_clock_state(clock)
 
 
+def _windows_sprite_rgb(im, *, hard_edge: bool):
+    """Produce a color-keyed RGB sprite without a magenta matte on Chujiu."""
+    im = im.convert("RGBA")
+    alpha = im.getchannel("A")
+    bg = Image.new("RGBA", im.size, (*CHROMA_RGB, 255))
+    if hard_edge:
+        # Windows -transparentcolor removes only exact key pixels. Blending a
+        # translucent fur pixel against the key leaves a visible purple rim.
+        # Keep the pet's own RGB at the silhouette; make the key binary.
+        mask = alpha.point(lambda v: 255 if v >= 96 else 0)
+        bg.paste(im, (0, 0), mask)
+    else:
+        im.putalpha(alpha.point(lambda v: 0 if v < 16 else v))
+        bg.alpha_composite(im)
+    return bg.convert("RGB")
+
+
 def _to_photo(im):
     im = im.convert("RGBA")
+    if os.name == "nt":
+        return ImageTk.PhotoImage(
+            _windows_sprite_rgb(im, hard_edge=SPRITE_EDGE_MODE == "matte-free")
+        )
     alpha = im.getchannel("A").point(lambda v: 0 if v < 16 else v)
     im.putalpha(alpha)
-    if os.name == "nt":
-        bg = Image.new("RGBA", im.size, (*CHROMA_RGB, 255))
-        bg.alpha_composite(im)
-        return ImageTk.PhotoImage(bg.convert("RGB"))
     return ImageTk.PhotoImage(im)
 
 
@@ -1398,9 +1623,18 @@ def _shortcut_argument_string(parts: list[str]) -> str:
 
 
 def _shortcut_icon_path() -> Path | None:
+    try:
+        skin_id = str((load_state() or {}).get("skin") or "")
+    except Exception:
+        skin_id = ""
+    if not skin_id or not skin_ready(skin_id):
+        skin_id = active_skin_id()
+        if not skin_ready(skin_id):
+            skin_id = DEFAULT_SKIN_ID
+    ico, _png = app_icon_paths(skin_id)
     candidates = [
-        ASSETS / "app.ico",
-        SKINS_DIR / DEFAULT_SKIN_ID / "app.ico",
+        ico,
+        app_icon_paths(DEFAULT_SKIN_ID)[0],
         fu.resource_dir() / "skins" / DEFAULT_SKIN_ID / "app.ico",
     ]
     if fu.is_frozen():
@@ -1726,25 +1960,61 @@ class UsagePet:
         self.root.lift()
         self.root.attributes("-topmost", True)
 
+    def _theme_decoration_mark(
+        self,
+        parent,
+        ui: dict,
+        *,
+        bg: str,
+        width: int = 52,
+        height: int = 32,
+        cursor: str = "",
+    ) -> tk.Canvas:
+        canvas = tk.Canvas(
+            parent,
+            width=width,
+            height=height,
+            bg=bg,
+            highlightthickness=0,
+            bd=0,
+            cursor=cursor,
+        )
+        paint_bubble_decoration(canvas, width / 2, height / 2, ui)
+        return canvas
+
+    def _skin_icon_photo(self, skin_id: str, size: int):
+        if ImageTk is None:
+            return None
+        key = f"_icon:{skin_id}:{int(size)}"
+        cached = self._photos.get(key)
+        if cached is not None:
+            return cached
+        image = load_skin_icon_image(skin_id, size)
+        if image is None:
+            return None
+        photo = ImageTk.PhotoImage(image)
+        self._photos[key] = photo
+        return photo
+
     def _apply_app_icon(self, win: tk.Misc) -> None:
-        ico = ASSETS / "app.ico"
-        png = ASSETS / "app.png"
-        if ico.exists():
+        ico, _png = app_icon_paths(self.skin_id)
+        if ico.is_file():
             try:
                 win.iconbitmap(str(ico))
             except tk.TclError:
                 pass
-        if ImageTk is None or not png.exists():
+        image = load_skin_icon_image(self.skin_id)
+        if ImageTk is None or image is None:
             return
-        try:
-            photo = ImageTk.PhotoImage(file=str(png))
-        except OSError:
-            return
+        photo = ImageTk.PhotoImage(image)
         self._photos["_app_icon"] = photo
         try:
             win.iconphoto(True, photo)
         except tk.TclError:
-            pass
+            try:
+                win.iconphoto(False, photo)
+            except tk.TclError:
+                pass
 
     def _apply_chrome(self) -> None:
         self.root.overrideredirect(True)
@@ -2304,7 +2574,6 @@ class UsagePet:
         card_bg = ui.get("inner", ui["settings_bg"])
         accent = ui.get("accent", "#c94b4b")
         accent_text = "#10243A" if ui.get("decoration") == "circuit" else "#ffffff"
-        mark = "⌁" if ui.get("decoration") == "circuit" else ("♥" if ui.get("decoration") == "bow" else "◆")
         popup = tk.Toplevel(self.root)
         self._context_menu = popup
         popup.withdraw()
@@ -2315,7 +2584,7 @@ class UsagePet:
         shell.pack(fill="both", expand=True, padx=1, pady=1)
         header = tk.Frame(shell, bg=ui["bubble_fill"])
         header.pack(fill="x")
-        tk.Label(header, text=mark, bg=accent, fg=accent_text, font=(ui["font_title"][0], 12, "bold"), padx=9, pady=6).pack(side="left")
+        self._theme_decoration_mark(header, ui, bg=ui["bubble_fill"], width=52, height=28).pack(side="left", padx=(6, 0), pady=2)
         tk.Label(header, text=tr(self.language, "menu.title", "宠物菜单"), bg=ui["bubble_fill"], fg=ui.get("pct") or ui["settings_text"], font=ui["font_title"], anchor="w", padx=9, pady=6).pack(side="left", fill="x", expand=True)
         tk.Frame(shell, height=2, bg=accent).pack(fill="x")
         body = tk.Frame(shell, bg=card_bg)
@@ -2582,8 +2851,12 @@ class UsagePet:
         border.pack(fill="both", expand=True, padx=1, pady=1)
         titlebar = tk.Frame(border, bg=bubble, cursor="fleur")
         titlebar.pack(fill="x")
-        mark_label = tk.Label(titlebar, text=mark, bg=accent, fg=mark_fg, font=(ui["font_title"][0], 12, "bold"), padx=10, pady=7, cursor="fleur")
-        mark_label.pack(side="left", fill="y")
+        if urgent:
+            mark_label = tk.Label(titlebar, text=mark, bg=accent, fg=mark_fg, font=(ui["font_title"][0], 12, "bold"), padx=10, pady=7, cursor="fleur")
+            mark_label.pack(side="left", fill="y")
+        else:
+            mark_label = self._theme_decoration_mark(titlebar, ui, bg=bubble, cursor="fleur")
+            mark_label.pack(side="left", padx=(6, 0), pady=2)
         title_label = tk.Label(titlebar, text=title, bg=bubble, fg=title_fg, font=ui["font_title"], anchor="w", padx=10, pady=7, cursor="fleur")
         title_label.pack(side="left", fill="x", expand=True)
         close = tk.Button(
@@ -2673,8 +2946,6 @@ class UsagePet:
         select_bg = ui.get("settings_select", card_bg)
         active_bg = ui.get("bar_track", select_bg)
         accent_text = "#10243A" if ui.get("decoration") == "circuit" else "#ffffff"
-        decoration = ui.get("decoration") or "none"
-        theme_mark = "⌁" if decoration == "circuit" else ("♥" if decoration == "bow" else "◆")
 
         hero = tk.Frame(
             shell,
@@ -2685,7 +2956,7 @@ class UsagePet:
             bd=0,
         )
         hero.pack(fill="x", pady=(0, 12))
-        tk.Label(hero, text=theme_mark, bg=accent, fg=accent_text, font=(ui["font_title"][0], 15, "bold"), padx=10, pady=8).pack(side="left", fill="y")
+        self._theme_decoration_mark(hero, ui, bg=card_bg, width=56, height=36).pack(side="left", padx=8, pady=6)
         hero_copy = tk.Frame(hero, bg=card_bg)
         hero_copy.pack(side="left", fill="both", expand=True, padx=12, pady=7)
         tk.Label(hero_copy, text=_t("settings.title_short", "个性化设置"), bg=card_bg, fg=ui["settings_fg"], font=ui["font_title"], anchor="w").pack(fill="x")
@@ -2693,6 +2964,8 @@ class UsagePet:
         skin_name = str(current_skin.get("displayName") or self.skin_id)
         if lang == "en" and self.skin_id == "megumi-kato":
             skin_name = "Megumi Kato"
+        elif lang == "en" and self.skin_id == "chujiu":
+            skin_name = "Chujiu"
         tk.Label(hero_copy, text=_t("settings.theme_active", "当前主题：{name}", name=skin_name), bg=card_bg, fg=ui["settings_muted"], font=ui["font"], anchor="w").pack(fill="x")
 
         controls_wrap = tk.Frame(shell, bg=card_bg, highlightbackground=ui["bubble_outline"], highlightthickness=1, bd=0)
@@ -2873,9 +3146,22 @@ class UsagePet:
             ready = bool(spec.get("_ready"))
             chip = tk.Frame(chips, bg=card_bg, highlightthickness=2, bd=0)
             chip.pack(side="left", fill="x", expand=True, padx=(0, 8) if i < len(skins) - 1 else 0)
+            icon_photo = self._skin_icon_photo(sid, 56)
+            if icon_photo is not None:
+                mark_cv = tk.Label(chip, image=icon_photo, bg=card_bg, bd=0)
+                mark_cv.pack(pady=(8, 0))
+            else:
+                preview_ui = resolve_theme(spec.get("theme") or {})
+                mark_cv = tk.Canvas(chip, width=72, height=44, bg=card_bg, highlightthickness=0, bd=0)
+                mark_cv.pack(pady=(8, 0))
+                paint_bubble_decoration(mark_cv, 36, 22, preview_ui)
             name = tk.Label(
                 chip,
-                text=("Megumi Kato" if lang == "en" and sid == "megumi-kato" else str(spec.get("displayName") or sid)),
+                text=(
+                    "Megumi Kato" if lang == "en" and sid == "megumi-kato"
+                    else "Chujiu" if lang == "en" and sid == "chujiu"
+                    else str(spec.get("displayName") or sid)
+                ),
                 bg=card_bg,
                 fg=ui["settings_fg"],
                 font=ui["font_title"],
@@ -2894,6 +3180,7 @@ class UsagePet:
                 widget.bind("<Button-1>", lambda _e, s=skin_id, r=ok: self._pick_skin(s, r))
 
             bind(chip)
+            bind(mark_cv)
             bind(name)
             bind(sub)
             self._skin_chips[sid] = chip
@@ -3021,6 +3308,8 @@ class UsagePet:
             for child in chip.winfo_children():
                 if isinstance(child, tk.Label):
                     child.configure(bg=card_bg)
+                elif isinstance(child, tk.Canvas):
+                    child.configure(bg=card_bg)
 
     def _pick_skin(self, skin_id: str, ready: bool) -> None:
         self._skin_var.set(skin_id)
@@ -3069,6 +3358,8 @@ class UsagePet:
         name = str(spec.get("displayName") or want)
         if self.language == "en" and want == "megumi-kato":
             name = "Megumi Kato"
+        elif self.language == "en" and want == "chujiu":
+            name = "Chujiu"
         overlay = tk.Frame(
             settings,
             bg=ui["bubble_fill"],
@@ -3078,17 +3369,13 @@ class UsagePet:
             cursor="watch",
         )
         overlay.place(relx=0.5, rely=0.5, anchor="center")
-        mark_fg = "#10243A" if ui.get("decoration") == "circuit" else "#ffffff"
-        tk.Label(
-            overlay,
-            text="⌁" if ui.get("decoration") == "circuit" else "♥",
-            bg=ui["accent"],
-            fg=mark_fg,
-            font=(ui["font_title"][0], 14, "bold"),
-            padx=18,
-            pady=8,
-            cursor="watch",
-        ).pack(fill="x")
+        icon_photo = self._skin_icon_photo(want, 64)
+        if icon_photo is not None:
+            tk.Label(overlay, image=icon_photo, bg=ui["bubble_fill"], bd=0, pady=8).pack()
+        else:
+            mark_cv = tk.Canvas(overlay, width=80, height=48, bg=ui["accent"], highlightthickness=0, bd=0)
+            mark_cv.pack(fill="x")
+            paint_bubble_decoration(mark_cv, 40, 24, ui)
         tk.Label(
             overlay,
             text=tr(self.language, "settings.applying_theme", "正在应用 {name}…", name=name),
@@ -3904,7 +4191,8 @@ class UsagePet:
                 cx, y1 + 10,
                 fill=ui["bubble_fill"], outline=ui["bubble_fill"],
             )
-            self._draw_decoration(cx, y0)
+            if panel == "quota":
+                self._draw_decoration(cx, y0)
         else:
             c.create_rectangle(x0, y0, x1, y1, fill=ui["bubble_fill"], outline=ui["bubble_outline"], width=1)
             c.create_polygon(
@@ -3972,30 +4260,22 @@ class UsagePet:
                 )
 
     def _draw_bow(self, x: float, y: float) -> None:
-        c = self.canvas
-        red = style().get("accent", "#c94b4b")
-        edge = _blend_hex(red, "#000000", 0.25)
-        inner = _blend_hex(red, "#ffffff", 0.28)
-        c.create_oval(x - 8, y - 5, x - 1, y + 5, fill=red, outline=edge, width=1)
-        c.create_oval(x + 1, y - 5, x + 8, y + 5, fill=red, outline=edge, width=1)
-        c.create_oval(x - 2.5, y - 3, x + 2.5, y + 3, fill=inner, outline=edge, width=1)
+        paint_bubble_decoration(self.canvas, x, y, style(), "bow")
 
     def _draw_circuit(self, x: float, y: float) -> None:
-        c = self.canvas
-        accent = style().get("accent", "#45DFF2")
-        c.create_line(x - 20, y, x - 7, y, fill=accent, width=2)
-        c.create_line(x + 7, y, x + 20, y, fill=accent, width=2)
-        c.create_line(x, y - 9, x, y + 9, fill=accent, width=2)
-        c.create_oval(x - 5, y - 5, x + 5, y + 5, outline=accent, width=2)
-        c.create_oval(x - 22, y - 3, x - 16, y + 3, outline=accent, width=1)
-        c.create_oval(x + 16, y - 3, x + 22, y + 3, outline=accent, width=1)
+        paint_bubble_decoration(self.canvas, x, y, style(), "circuit")
+
+    def _draw_paw(self, x: float, y: float) -> None:
+        paint_bubble_decoration(self.canvas, x, y, style(), "paw")
+
+    def _draw_beret(self, x: float, y: float) -> None:
+        paint_bubble_decoration(self.canvas, x, y, style(), "beret")
+
+    def _draw_pcb(self, x: float, y: float) -> None:
+        paint_bubble_decoration(self.canvas, x, y, style(), "pcb")
 
     def _draw_decoration(self, x: float, y: float) -> None:
-        mark = style().get("decoration") or "none"
-        if mark == "bow":
-            self._draw_bow(x, y)
-        elif mark == "circuit":
-            self._draw_circuit(x, y)
+        paint_bubble_decoration(self.canvas, x, y, style())
 
     def _wrap_text(self, text: str, font: tkfont.Font, max_px: int) -> list[str]:
         if max_px <= 8 or font.measure(text) <= max_px:

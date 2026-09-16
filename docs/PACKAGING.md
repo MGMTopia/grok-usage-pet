@@ -17,7 +17,8 @@ The current script:
 3. runs the source smoke test;
 4. builds the PyInstaller spec;
 5. runs frozen non-GUI and three-second Tk visual smoke tests;
-6. verifies required themes and rejects user-data files;
+6. verifies required themes, keeps only `pet.json` / `spritesheet.webp` /
+   `app.ico` / `app.png` per skin, and rejects user-data files;
 7. copies exact dependency license files from the build environment;
 8. creates a Windows x64 ZIP and matching SHA256 file.
 

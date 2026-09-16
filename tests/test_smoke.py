@@ -107,6 +107,89 @@ class SourceSmokeTests(unittest.TestCase):
         custom = pet.resolve_theme({"preset": "tech", "accent": "#ABCDEF"})
         self.assertEqual(custom["accent"], "#ABCDEF")
 
+    def test_quota_decorations_are_skin_specific_and_offline(self) -> None:
+        class RecordingCanvas:
+            def __init__(self) -> None:
+                self.calls: list[tuple[str, tuple]] = []
+
+            def __getattr__(self, name: str):
+                if not name.startswith("create_"):
+                    raise AttributeError(name)
+
+                def record(*args, **_kwargs):
+                    self.calls.append((name, args))
+                    return len(self.calls)
+
+                return record
+
+        expected = {
+            "megumi-kato": ("beret", "create_polygon"),
+            "original": ("pcb", "create_rectangle"),
+            "chujiu": ("paw", "create_oval"),
+        }
+        try:
+            for skin_id, (mark, required_shape) in expected.items():
+                with self.subTest(skin=skin_id):
+                    pet.activate_skin(skin_id)
+                    self.assertEqual(pet.style()["bubble_decoration"], mark)
+                    app = pet.UsagePet.__new__(pet.UsagePet)
+                    app.canvas = RecordingCanvas()
+                    app._draw_decoration(100, 20)
+                    self.assertIn(required_shape, {name for name, _args in app.canvas.calls})
+                    self.assertTrue(app.canvas.calls)
+        finally:
+            pet.activate_skin("original")
+        legacy = pet.resolve_theme({"preset": "soft", "decoration": "bow"})
+        self.assertEqual(legacy["bubble_decoration"], "bow")
+        no_mark = pet.resolve_theme({"preset": "soft", "decoration": "none"})
+        self.assertEqual(no_mark["bubble_decoration"], "none")
+        invalid = pet.resolve_theme({"bubbleDecoration": "cat"})
+        self.assertEqual(invalid["bubble_decoration"], invalid["decoration"])
+
+    def test_theme_app_icons_are_skin_portraits(self) -> None:
+        import skin_catalog
+
+        for skin_id in skin_catalog.RELEASE_SKIN_IDS:
+            with self.subTest(skin=skin_id):
+                spec = pet.load_skin_spec(skin_id)
+                ui = pet.resolve_theme(spec.get("theme"))
+                decoration = pet.render_bubble_decoration_icon(ui, 256)
+                ico, png = pet.app_icon_paths(skin_id)
+                self.assertTrue(ico.is_file(), ico)
+                self.assertTrue(png.is_file(), png)
+                stored = Image.open(png).convert("RGBA")
+                self.assertEqual(stored.size, (256, 256))
+                self.assertNotEqual(decoration.tobytes(), stored.tobytes())
+                portrait = pet.load_skin_icon_image(skin_id, 256)
+                self.assertIsNotNone(portrait)
+                self.assertEqual(portrait.size, (256, 256))
+                self.assertEqual(portrait.tobytes(), stored.tobytes())
+                pet.activate_skin(skin_id)
+                self.assertEqual(pet.active_skin_id(), skin_id)
+        pet.activate_skin("original")
+
+    def test_hard_edge_has_no_magenta_blend(self) -> None:
+        image = Image.new("RGBA", (3, 1))
+        image.putdata([(20, 11, 11, 53), (20, 11, 11, 160), (20, 11, 11, 255)])
+        keyed = pet._windows_sprite_rgb(image, hard_edge=True)
+        legacy = pet._windows_sprite_rgb(image, hard_edge=False)
+        self.assertEqual(keyed.getpixel((0, 0)), pet.CHROMA_RGB)
+        self.assertEqual(keyed.getpixel((1, 0)), (20, 11, 11))
+        self.assertEqual(keyed.getpixel((2, 0)), (20, 11, 11))
+        self.assertNotEqual(legacy.getpixel((1, 0)), (20, 11, 11))
+        self.assertEqual(legacy.getpixel((2, 0)), (20, 11, 11))
+
+    def test_sprite_edge_mode_is_generic_and_switches_with_skin(self) -> None:
+        try:
+            pet.activate_skin("megumi-kato")
+            self.assertEqual(pet.SPRITE_EDGE_MODE, "legacy-matte")
+            pet.activate_skin("original")
+            self.assertEqual(pet.SPRITE_EDGE_MODE, "matte-free")
+        finally:
+            pet.activate_skin("original")
+        with mock.patch.object(pet.SKIN_CATALOG, "read_json", return_value={"spriteEdgeMode": []}):
+            self.assertEqual(pet.load_skin_spec("original")["spriteEdgeMode"], "matte-free")
+
     def test_legacy_fixed_open_state_is_not_restored(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             state_file = Path(td) / "pet_state.json"

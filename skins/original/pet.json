@@ -10,7 +10,8 @@
     "bubbleStyle": "rounded",
     "barStyle": "rounded",
     "tipStyle": "rounded",
-    "decoration": "circuit"
+    "decoration": "circuit",
+    "bubbleDecoration": "pcb"
   },
   "atlas": {
     "width": 1536,
