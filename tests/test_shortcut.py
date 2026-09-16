@@ -33,6 +33,15 @@ class ShortcutTests(unittest.TestCase):
             self.assertTrue(icon.is_file())
             self.assertEqual(icon.name.lower(), "app.ico")
 
+    def test_shortcut_icon_follows_saved_skin(self) -> None:
+        import skin_catalog
+
+        for skin_id in skin_catalog.RELEASE_SKIN_IDS:
+            with self.subTest(skin=skin_id):
+                with mock.patch.object(pet, "load_state", return_value={"skin": skin_id}):
+                    path = pet._shortcut_icon_path()
+                self.assertEqual(path, pet.app_icon_paths(skin_id)[0])
+
     @unittest.skipUnless(os.name == "nt", "Windows shortcut COM")
     def test_desktop_dir_does_not_spawn_powershell(self) -> None:
         with mock.patch.object(pet.subprocess, "check_output") as check_output:

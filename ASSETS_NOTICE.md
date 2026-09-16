@@ -11,6 +11,14 @@ otherwise, it may be redistributed with AI Quota Pet under the same MIT
 terms as the source code. This permission does not extend to third-party tools,
 fonts, or runtime components used by the packaged application.
 
+## Chujiu theme
+
+The `skins/chujiu/` theme is original pixel artwork for this project
+(a ragdoll-cat companion named 初九). Unless a file states otherwise, it
+may be redistributed with AI Quota Pet under the same MIT terms as the
+source code. Reference photographs used while drawing the theme are not
+shipped and are not licensed by this notice.
+
 ## Megumi Kato fan theme
 
 The `skins/megumi-kato/` theme and related character artwork are unofficial fan

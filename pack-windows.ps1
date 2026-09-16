@@ -127,15 +127,25 @@ Copy-Item -LiteralPath $pyInstallerLicense -Destination (Join-Path $thirdPartyDi
 Copy-Item -LiteralPath $tclTkLicense.FullName -Destination (Join-Path $thirdPartyDir "TCL_TK_LICENSE.txt") -Force
 
 $skinRoot = Join-Path $out "_internal\skins"
-foreach ($need in @(
-    "original\pet.json",
-    "original\spritesheet.webp",
-    "original\app.ico",
-    "original\app.png",
-    "megumi-kato\pet.json",
-    "megumi-kato\spritesheet.webp"
-)) {
-    if (-not (Test-Path (Join-Path $skinRoot $need))) { throw "pack missing skins\$need" }
+$releaseSkins = @("original", "megumi-kato", "chujiu")
+$allowedSkinFiles = @("pet.json", "spritesheet.webp", "app.ico", "app.png")
+$packedSkinDirs = @(Get-ChildItem -LiteralPath $skinRoot -Directory | ForEach-Object { $_.Name })
+$extraSkins = @($packedSkinDirs | Where-Object { $releaseSkins -notcontains $_ })
+if ($extraSkins.Count -gt 0) {
+    throw "pack contains extra skins (move drafts out of skins/): $($extraSkins -join ', ')"
+}
+$missingSkins = @($releaseSkins | Where-Object { $packedSkinDirs -notcontains $_ })
+if ($missingSkins.Count -gt 0) {
+    throw "pack missing required skin dirs: $($missingSkins -join ', ')"
+}
+foreach ($skinId in $releaseSkins) {
+    $skinDir = Join-Path $skinRoot $skinId
+    Get-ChildItem -LiteralPath $skinDir -Force | Where-Object {
+        $_.PSIsContainer -or ($allowedSkinFiles -notcontains $_.Name)
+    } | Remove-Item -Recurse -Force
+    foreach ($need in $allowedSkinFiles) {
+        if (-not (Test-Path (Join-Path $skinDir $need))) { throw "pack missing skins\$skinId\$need" }
+    }
 }
 
 $forbidden = @("auth.json", "state.vscdb", "pet_state.json", "usage.json", "usage.txt", "pet.log", "watch.log")
@@ -154,6 +164,14 @@ foreach ($file in $textFiles) {
     $content = Get-Content -LiteralPath $file.FullName -Raw -ErrorAction Stop
     foreach ($pattern in $secretPatterns) {
         if ($content -match $pattern) { throw "pack content check failed: $($file.FullName) matched $pattern" }
+    }
+    if ($content -match '(?i)lirui') { throw "pack content check failed: $($file.FullName) matched lirui" }
+}
+$packRoot = (Resolve-Path -LiteralPath $out).Path.TrimEnd('\')
+Get-ChildItem -LiteralPath $out -Recurse | ForEach-Object {
+    $relative = $_.FullName.Substring($packRoot.Length)
+    if ($relative -match '(?i)lirui|skins-archive|hatch-pet-|\\work\\|\\test\\') {
+        throw "pack path check failed: $relative"
     }
 }
 

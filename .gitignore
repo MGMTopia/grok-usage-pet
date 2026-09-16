@@ -7,6 +7,9 @@ build/
 release/
 work/
 test/
+skins-archive/
+tmp-v4gifqa/
+_qa_tmp/
 auth.json
 state.vscdb
 .cursor/

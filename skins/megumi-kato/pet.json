@@ -5,12 +5,14 @@
   "spritesheetPath": "spritesheet.webp",
   "icon": "app.ico",
   "iconPng": "app.png",
+  "spriteEdgeMode": "legacy-matte",
   "theme": {
     "preset": "soft",
     "bubbleStyle": "rounded",
     "barStyle": "rounded",
     "tipStyle": "rounded",
-    "decoration": "bow"
+    "decoration": "bow",
+    "bubbleDecoration": "beret"
   },
   "atlas": {
     "width": 1536,

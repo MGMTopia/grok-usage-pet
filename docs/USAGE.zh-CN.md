@@ -6,7 +6,7 @@ Grok Bot、Cursor 和 Codex 的额度与重置时间。它不是 xAI、Cursor �
 
 ## 安装
 
-1. 从 GitHub Releases 下载当前 Windows x64 ZIP（`GrokUsagePet-v0.3.15-Windows-x64.zip`）。
+1. 从 GitHub Releases 下载当前 Windows x64 ZIP（`GrokUsagePet-v0.3.16-Windows-x64.zip`）。
 2. 解压整个文件夹，不要只复制 EXE。
 3. 至少登录一个数据来源：
    - SuperGrok：通过 Grok CLI 完成登录；
@@ -55,7 +55,8 @@ Grok Bot、Cursor 和 Codex 的额度与重置时间。它不是 xAI、Cursor �
 
 ## 主题
 
-- `Original`：项目原创默认主题；
+- `Original / Pip`：项目原创默认主题；
+- `布偶猫初九`（`skins/chujiu`）：项目原创布偶猫主题；
 - `Megumi Kato`：非官方同人主题，不属于 MIT 代码许可证。
 
 从旧可爱版升级时，v0.3 首次运行会在新目录没有同名文件的前提下，从

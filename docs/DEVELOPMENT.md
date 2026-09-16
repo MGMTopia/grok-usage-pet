@@ -33,6 +33,8 @@ network, or read real Grok/Cursor credentials.
 - `cursor_hooks.py`: safe shared Cursor hook management
 - `skin_catalog.py`: theme discovery and validation
 - `docs/THEMING.md`: data-driven skin theme tokens and compatibility rules
+- `docs/SPRITE_EDGES.md`: Windows color-key sprite edge policy (`matte-free` / `legacy-matte`)
+- `skins/original`, `skins/megumi-kato`, `skins/chujiu`: pack-ready themes (drafts stay in `skins-archive/` / `work/`)
 - `pet_view_model.py`: pure UI quota mapping
 - `pet_settings.py`: layered `pet_state.json` with v0.3 flat aliases
 - `info_modules.py`: optional module host

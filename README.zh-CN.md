@@ -8,13 +8,13 @@
 
 Windows 上的非官方透明桌宠，用来看 SuperGrok 周额度、Grok Bot 周额度、Cursor 两个月额度池，以及 Codex（一条上 5 小时同色、周额度略深）。不是 xAI、Cursor 或 OpenAI 官方软件。账单接口以后可能会变。
 
-程序代码是 MIT。默认角色 Pip 是项目原创。加藤惠是可选的非官方同人主题，见 [ASSETS_NOTICE.md](ASSETS_NOTICE.md)。
+程序代码是 MIT。默认角色 Pip 和布偶猫初九是项目原创。加藤惠是可选的非官方同人主题，见 [ASSETS_NOTICE.md](ASSETS_NOTICE.md)。当前 zip 含这三套形象，可在设置 → 形象 切换。上面的预览仍是默认 Pip。
 
 ## 安装
 
-当前版本：**0.3.15**（GitHub 标签 `v0.3.15`）。
+当前版本：**0.3.16**（GitHub 标签 `v0.3.16`）。
 
-从 [最新 Release](https://github.com/MGMTopia/grok-usage-pet/releases/latest) 下载 **`GrokUsagePet-v0.3.15-Windows-x64.zip`**。不必装 Python，也不用自己编译。
+从 [最新 Release](https://github.com/MGMTopia/grok-usage-pet/releases/latest) 下载 **`GrokUsagePet-v0.3.16-Windows-x64.zip`**。不必装 Python，也不用自己编译。
 
 1. 解压**整个文件夹**，不要只拷贝 exe。
 2. 本机先登录一次（登哪个就显示哪条，不必一直开着对应软件）：

@@ -39,6 +39,10 @@ class BuildConfigTests(unittest.TestCase):
         self.assertIn('.grok-usage-pet-install', script)
         self.assertIn('grok-usage-pet-portable-v1', script)
         self.assertIn('VERSION must be a numeric semantic version', script)
+        self.assertIn('$releaseSkins', script)
+        self.assertIn('pack contains extra skins', script)
+        self.assertIn('$allowedSkinFiles', script)
+        self.assertIn('pack path check failed', script)
 
     def test_dependency_files_cover_runtime_and_builder(self) -> None:
         runtime = (ROOT / "requirements.txt").read_text(encoding="utf-8")
@@ -74,16 +78,30 @@ class BuildConfigTests(unittest.TestCase):
         self.assertIn("info_modules", spec)
         self.assertIn("quota_module", spec)
         self.assertIn("clock_module", spec)
+        self.assertIn("localization", spec)
         workflow_test = (ROOT / ".github" / "workflows" / "test.yml").read_text(encoding="utf-8")
         self.assertIn("app_update.py", workflow_test)
         self.assertIn("quota_module.py", workflow_test)
         self.assertIn("clock_module.py", workflow_test)
+
+    def test_skins_dir_only_contains_release_themes(self) -> None:
+        import skin_catalog
+
+        ids = {
+            path.parent.name
+            for path in (ROOT / "skins").glob("*/pet.json")
+        }
+        self.assertEqual(ids, set(skin_catalog.RELEASE_SKIN_IDS))
+        script = (ROOT / "pack-windows.ps1").read_text(encoding="utf-8")
+        for skin_id in skin_catalog.RELEASE_SKIN_IDS:
+            self.assertIn(skin_id, script)
 
     def test_code_and_asset_licenses_are_separate(self) -> None:
         license_text = (ROOT / "LICENSE").read_text(encoding="utf-8")
         assets = (ROOT / "ASSETS_NOTICE.md").read_text(encoding="utf-8")
         self.assertIn("MIT License", license_text)
         self.assertIn("megumi-kato", assets)
+        self.assertIn("skins/chujiu/", assets)
 
     def test_release_workflow_binds_tag_version_and_changelog(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")

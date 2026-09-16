@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+## 0.3.16 — 2026-09-15
+
+Official 初九 theme, matching chrome emblems, and a leaner Windows zip. Git tag: `v0.3.16`.
+
+- Promote archived 初九 v4 to the official `skins/chujiu` theme (display name
+  布偶猫初九). `pack-windows.ps1` and `RELEASE_SKIN_IDS` now ship Original,
+  Megumi Kato, and Chujiu. Older 初九 drafts stay in `skins-archive/`.
+- Theme `app.ico` / `app.png` are the character portraits for appearance chips
+  and a newly created desktop shortcut. The right-click menu and Settings
+  titlebar use the same quota-bubble emblem as the usage panel (Original PCB,
+  Megumi beret, Chujiu paw).
+- Pack only `pet.json`, `spritesheet.webp`, `app.ico`, and `app.png` per
+  release skin, and require those four files for every theme including
+  Megumi Kato.
+
 ## 0.3.15 — 2026-09-11
 
 Unified themed windows, flicker-free skin switching, and AI Quota Pet branding. Git tag: `v0.3.15`.

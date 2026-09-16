@@ -5,7 +5,8 @@ AI Quota Pet has two independent product layers:
 ```text
 AI Quota Pet
 ├── Pet engine
-│   ├── Original theme
+│   ├── Original / Pip theme
+│   ├── 布偶猫初九 theme
 │   └── Megumi Kato fan theme
 └── Information modules
     ├── Quota (SuperGrok, Grok Bot, Cursor, Codex)
@@ -30,8 +31,9 @@ Manifests without `theme` retain the soft compatibility preset. Themes use the
 Codex-compatible v2 8×11 atlas contract: nine
 standard animation rows and sixteen look directions.
 
-The v0.3 structure makes `original` the default and keeps `megumi-kato`
-optional. Core startup must remain functional when the fan theme is absent.
+The v0.3 structure makes `original` the default, ships `chujiu` as a second
+original theme, and keeps `megumi-kato` optional. Core startup must remain
+functional when the fan theme is absent.
 
 ## Stage A core boundary
 
