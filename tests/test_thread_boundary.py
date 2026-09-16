@@ -45,6 +45,16 @@ class TkThreadBoundaryTests(unittest.TestCase):
         ]
         self.assertEqual(len(calls_after), 1)
 
+    def test_release_page_is_not_opened_inside_the_tk_callback(self) -> None:
+        opener = self.method("_open_release_page")
+        calls = [
+            node.func.attr
+            for node in ast.walk(opener)
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+        ]
+        self.assertIn("after", calls)
+        self.assertNotIn("open", calls)
+
 
 if __name__ == "__main__":
     unittest.main()

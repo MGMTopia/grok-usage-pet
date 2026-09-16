@@ -14,9 +14,9 @@ Windows 上的非官方额度桌宠，用来看 SuperGrok 周额度、Grok Bot �
 
 ## 安装
 
-当前版本：**0.3.16**（`v0.3.16`）。
+当前版本：**0.3.17**（`v0.3.17`）。
 
-从 [GitHub Release](https://github.com/MGMTopia/grok-usage-pet/releases/latest) 下载 **`GrokUsagePet-v0.3.16-Windows-x64.zip`**。不必装 Python。
+从 [GitHub Release](https://github.com/MGMTopia/grok-usage-pet/releases/latest) 下载 **`GrokUsagePet-v0.3.17-Windows-x64.zip`**。不必装 Python。
 
 1. 解压**整个文件夹**，不要只拷贝 exe。
 2. 本机先登录一次（登哪个就显示哪条）：
@@ -44,7 +44,7 @@ Windows 10/11。数据在 `%LOCALAPPDATA%\GrokUsagePet`。设置 → 卸载，�
 
 Unofficial overlay for SuperGrok weekly, Grok Bot weekly, Cursor monthly, and Codex quota. Not an xAI, Cursor, or OpenAI product.
 
-Download **`GrokUsagePet-v0.3.16-Windows-x64.zip`** from the
+Download **`GrokUsagePet-v0.3.17-Windows-x64.zip`** from the
 [latest GitHub Release](https://github.com/MGMTopia/grok-usage-pet/releases/latest).
 Python is not required.
 
@@ -112,7 +112,7 @@ The preview renders fixed sample quotas and exits after three seconds without sa
 
 | Zip | What |
 |-----|------|
-| `GrokUsagePet-v0.3.16-Windows-x64.zip` | Current release (`GrokUsagePet.exe`). Rebuild with `pack-windows.ps1`. |
+| `GrokUsagePet-v0.3.17-Windows-x64.zip` | Current release (`GrokUsagePet.exe`). Rebuild with `pack-windows.ps1`. |
 | `GrokUsagePet-kawaii.zip` | Legacy v0.2.0 compatibility archive; not the current release. |
 
 Do not copy `auth.json`, Cursor `state.vscdb`, or `pet_state.json` into a zip.

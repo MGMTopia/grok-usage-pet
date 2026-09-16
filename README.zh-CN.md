@@ -12,9 +12,9 @@ Windows 上的非官方透明桌宠，用来看 SuperGrok 周额度、Grok Bot �
 
 ## 安装
 
-当前版本：**0.3.16**（GitHub 标签 `v0.3.16`）。
+当前版本：**0.3.17**（GitHub 标签 `v0.3.17`）。
 
-从 [最新 Release](https://github.com/MGMTopia/grok-usage-pet/releases/latest) 下载 **`GrokUsagePet-v0.3.16-Windows-x64.zip`**。不必装 Python，也不用自己编译。
+从 [最新 Release](https://github.com/MGMTopia/grok-usage-pet/releases/latest) 下载 **`GrokUsagePet-v0.3.17-Windows-x64.zip`**。不必装 Python，也不用自己编译。
 
 1. 解压**整个文件夹**，不要只拷贝 exe。
 2. 本机先登录一次（登哪个就显示哪条，不必一直开着对应软件）：
