@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## 0.3.17 — 2026-09-16
+
+Stop Settings → Check now from freezing the pet. Git tag: `v0.3.17`.
+
+- After a manual GitHub update check, write the result into the Settings
+  status line instead of opening a modal notice that stole the mouse while
+  Settings was still in front.
+- Keep ordinary notices parented to Settings, without `grab_set`, and open
+  release pages from a detached process so Tk callbacks cannot hang pythonw.
+- Ignore color-key `<Leave>` events over the sprite cell so quota animation
+  updates cannot expand and collapse the window in a loop.
+
 ## 0.3.16 — 2026-09-15
 
 Official 初九 theme, matching chrome emblems, and a leaner Windows zip. Git tag: `v0.3.16`.

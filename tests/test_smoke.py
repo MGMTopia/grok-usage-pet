@@ -179,6 +179,23 @@ class SourceSmokeTests(unittest.TestCase):
         self.assertNotEqual(legacy.getpixel((1, 0)), (20, 11, 11))
         self.assertEqual(legacy.getpixel((2, 0)), (20, 11, 11))
 
+    def test_windows_sprite_conversion_uses_lookup_table(self) -> None:
+        import ast
+
+        tree = ast.parse((ROOT / "pet.py").read_text(encoding="utf-8"))
+        func = next(
+            node
+            for node in tree.body
+            if isinstance(node, ast.FunctionDef) and node.name == "_windows_sprite_rgb"
+        )
+        self.assertFalse(
+            any(isinstance(node, ast.Lambda) for node in ast.walk(func)),
+            "Python point() callbacks freeze Windows skin loads",
+        )
+        source = ast.get_source_segment((ROOT / "pet.py").read_text(encoding="utf-8"), func) or ""
+        self.assertIn("_ALPHA_HARD_LUT", source)
+        self.assertIn("_ALPHA_SOFT_LUT", source)
+
     def test_sprite_edge_mode_is_generic_and_switches_with_skin(self) -> None:
         try:
             pet.activate_skin("megumi-kato")

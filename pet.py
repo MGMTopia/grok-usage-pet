@@ -71,6 +71,8 @@ GROK_HOOK_MARKER = "grok-usage-pet"
 BG = "#1b1b1f"
 CHROMA = "#ff00ff"
 CHROMA_RGB = (255, 0, 255)
+_ALPHA_HARD_LUT = bytes(255 if value >= 96 else 0 for value in range(256))
+_ALPHA_SOFT_LUT = bytes(0 if value < 16 else value for value in range(256))
 REFRESH_MS = 60_000
 TICK_MS = 40
 MAX_ANIM_ELAPSED_MS = 250
@@ -844,10 +846,11 @@ def _windows_sprite_rgb(im, *, hard_edge: bool):
         # Windows -transparentcolor removes only exact key pixels. Blending a
         # translucent fur pixel against the key leaves a visible purple rim.
         # Keep the pet's own RGB at the silhouette; make the key binary.
-        mask = alpha.point(lambda v: 255 if v >= 96 else 0)
+        # Use a 256-byte LUT; a Python callback here freezes skin loads.
+        mask = alpha.point(_ALPHA_HARD_LUT)
         bg.paste(im, (0, 0), mask)
     else:
-        im.putalpha(alpha.point(lambda v: 0 if v < 16 else v))
+        im.putalpha(alpha.point(_ALPHA_SOFT_LUT))
         bg.alpha_composite(im)
     return bg.convert("RGB")
 
@@ -858,7 +861,7 @@ def _to_photo(im):
         return ImageTk.PhotoImage(
             _windows_sprite_rgb(im, hard_edge=SPRITE_EDGE_MODE == "matte-free")
         )
-    alpha = im.getchannel("A").point(lambda v: 0 if v < 16 else v)
+    alpha = im.getchannel("A").point(_ALPHA_SOFT_LUT)
     im.putalpha(alpha)
     return ImageTk.PhotoImage(im)
 
@@ -1829,6 +1832,31 @@ def create_desktop_shortcut() -> Path:
     return name
 
 
+def pointer_over_pet_content(
+    local_x: float,
+    local_y: float,
+    *,
+    sprite_box: tuple[float, float, float, float],
+    bars_visible: bool,
+    win_w: int,
+    sprite_y: int,
+    pad: int = 16,
+) -> bool:
+    """True when the pointer is over the sprite cell or the quota/clock card.
+
+    Windows color-key holes fire Tk <Leave> while the cursor is still on the
+    pet. Treat the full sprite cell (not the opaque silhouette) as content so
+    animation updates cannot expand/collapse the window in a loop.
+    """
+    x0, y0, x1, y1 = sprite_box
+    if (x0 - pad) <= local_x <= (x1 + pad) and (y0 - pad) <= local_y <= (y1 + pad):
+        return True
+    if bars_visible and win_w > 0 and sprite_y > 0:
+        if (8 - pad) <= local_x <= (win_w - 8 + pad) and (-pad) <= local_y <= (sprite_y + pad):
+            return True
+    return False
+
+
 class UsagePet:
     def __init__(self, *, preview_snapshot: dict | None = None, auto_close_ms: int | None = None) -> None:
         self._preview_mode = preview_snapshot is not None
@@ -1877,6 +1905,9 @@ class UsagePet:
         self._hover_open = False
         self._hover_armed = False
         self._collapse_job: str | None = None
+        self._layout_busy = False
+        self._chroma_applied = False
+        self._tk_font_cache = None
         self._mouse = (0, 0)
         self._sprite_box = (0, 0, 0, 0)
         self._win_w = SPRITE_W
@@ -1931,10 +1962,10 @@ class UsagePet:
         self._load_sprites()
         self._play_oneshot("waving")
         self._note_activity()
-        self._apply_chrome()
+        self._apply_chrome(refresh_color_key=True)
         self._apply_layout(initial=True)
         self.draw()
-        self._apply_chrome()
+        self._apply_chrome(refresh_color_key=True)
         self.root.deiconify()
         self.root.geometry(self._geom)
         self.root.after(100, self._poll_fetch_results)
@@ -2016,13 +2047,15 @@ class UsagePet:
             except tk.TclError:
                 pass
 
-    def _apply_chrome(self) -> None:
+    def _apply_chrome(self, *, refresh_color_key: bool = False) -> None:
         self.root.overrideredirect(True)
         self.root.configure(bg=CHROMA)
         self.canvas.configure(bg=CHROMA)
         try:
             if os.name == "nt":
-                self.root.wm_attributes("-transparentcolor", CHROMA)
+                if refresh_color_key or not getattr(self, "_chroma_applied", False):
+                    self.root.wm_attributes("-transparentcolor", CHROMA)
+                    self._chroma_applied = True
             elif sys.platform == "darwin":
                 self.root.wm_attributes("-transparent", True)
                 self.root.configure(bg="systemTransparent")
@@ -2122,6 +2155,8 @@ class UsagePet:
                 pass
 
     def _apply_layout(self, initial: bool = False) -> None:
+        if getattr(self, "_layout_busy", False):
+            return
         win_w, win_h, sprite_y = self._layout_metrics()
         if (
             not initial
@@ -2151,6 +2186,7 @@ class UsagePet:
             new_y = max(0, min(new_y, max(0, sh - win_h)))
         else:
             new_x, new_y = self._clamp_pos(new_x, new_y, win_w, win_h)
+        self._layout_busy = True
         previous_alpha = self._begin_layout_repaint(initial=initial)
         try:
             self._win_w, self._win_h, self._sprite_y = win_w, win_h, sprite_y
@@ -2166,6 +2202,8 @@ class UsagePet:
                 except tk.TclError:
                     pass
             raise
+        finally:
+            self._layout_busy = False
         print(
             f"layout {self._geom} hover_open={self._hover_open} pinned={self.pinned}",
             flush=True,
@@ -2375,9 +2413,26 @@ class UsagePet:
             self.draw()
 
     def on_leave(self, event) -> None:
+        if self._pointer_over_content():
+            return
         self._hover = None
         self._schedule_collapse()
         self.draw()
+
+    def _pointer_over_content(self) -> bool:
+        try:
+            px = self.root.winfo_pointerx() - self.root.winfo_rootx()
+            py = self.root.winfo_pointery() - self.root.winfo_rooty()
+        except tk.TclError:
+            return False
+        return pointer_over_pet_content(
+            px,
+            py,
+            sprite_box=self._sprite_box,
+            bars_visible=self.bars_visible(),
+            win_w=self._win_w,
+            sprite_y=self._sprite_y,
+        )
 
     def _cancel_collapse(self) -> None:
         if self._collapse_job is not None:
@@ -2901,16 +2956,31 @@ class UsagePet:
     def _place_themed_window(self, win: tk.Toplevel, parent=None) -> None:
         try:
             win.update_idletasks()
-            owner = parent or self.root
+            owner = parent or self._front_parent()
             width, height = win.winfo_reqwidth(), win.winfo_reqheight()
             screen_w, screen_h = win.winfo_screenwidth(), win.winfo_screenheight()
-            x = owner.winfo_rootx() + max(12, owner.winfo_width() - 32)
-            y = owner.winfo_rooty() + 24
+            x = owner.winfo_rootx() + max(12, (owner.winfo_width() - width) // 2)
+            y = owner.winfo_rooty() + 48
             x = max(8, min(x, screen_w - width - 8))
             y = max(8, min(y, screen_h - height - 8))
             win.geometry(f"+{x}+{y}")
+            win.lift()
+            win.attributes("-topmost", True)
+            win.focus_force()
         except tk.TclError:
             pass
+
+    def _settings_is_open(self) -> bool:
+        settings = getattr(self, "_settings", None)
+        try:
+            return settings is not None and settings.winfo_exists()
+        except tk.TclError:
+            return False
+
+    def _front_parent(self):
+        if self._settings_is_open():
+            return self._settings
+        return self.root
 
     def open_settings(self) -> None:
         self._note_activity()
@@ -3554,7 +3624,22 @@ class UsagePet:
         url = app_update.HTML_RELEASE_PREFIX + "latest"
         if info is not None and app_update.allowed_html_url(info.html_url):
             url = info.html_url
-        webbrowser.open(url)
+        self.root.after(50, lambda: self._open_url(url))
+
+    def _open_url(self, url: str) -> None:
+        try:
+            if os.name == "nt":
+                subprocess.Popen(
+                    ["cmd", "/c", "start", "", url],
+                    close_fds=True,
+                    creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
+                )
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", url], start_new_session=True)
+            else:
+                subprocess.Popen(["xdg-open", url], start_new_session=True)
+        except Exception:
+            webbrowser.open(url)
 
     def _poll_update_results(self) -> None:
         if self._closing:
@@ -3573,18 +3658,16 @@ class UsagePet:
             if err:
                 self._refresh_update_status()
                 if manual:
-                    self._toast(tr(self.language, "update.check_failed", f"检查失败：{err}", error=err))
+                    self._notify_update(tr(self.language, "update.check_failed", f"检查失败：{err}", error=err))
                 return
             save_state({"last_update_check": time.time()})
             info = payload
             self._update_info = info
             self._refresh_update_status()
             if info is not None and app_update.is_newer(info.version):
-                if manual:
-                    self._open_release_page(info)
-                self._toast(tr(self.language, "update.new", f"有新版本 v{info.version}。", version=info.version))
+                self._notify_update(tr(self.language, "update.new", f"有新版本 v{info.version}。", version=info.version))
             elif manual:
-                self._toast(tr(self.language, "update.latest", f"已是最新 v{APP_VERSION}。", version=APP_VERSION))
+                self._notify_update(tr(self.language, "update.latest", f"已是最新 v{APP_VERSION}。", version=APP_VERSION))
             return
         if err:
             self._refresh_update_status()
@@ -3674,9 +3757,16 @@ class UsagePet:
         except Exception as exc:
             self._toast(tr(self.language, "shortcut.failed", f"创建失败：{exc}", error=exc))
 
+    def _notify_update(self, text: str) -> None:
+        self._refresh_update_status()
+        if self._settings_is_open():
+            return
+        self._toast(text)
+
     def _toast(self, text: str) -> None:
         title = tr(self.language, "generic.notice", "提示")
-        dlg, body, ui = self._themed_dialog(title)
+        parent = self._front_parent()
+        dlg, body, ui = self._themed_dialog(title, parent=parent)
         tk.Label(
             body,
             text=text,
@@ -3690,9 +3780,8 @@ class UsagePet:
         btn.pack(fill="x")
         dlg.bind("<Return>", lambda _e: dlg.destroy())
         dlg.bind("<Escape>", lambda _e: dlg.destroy())
-        dlg.transient(self.root)
-        dlg.grab_set()
-        self._place_themed_window(dlg, self.root)
+        dlg.transient(parent)
+        self._place_themed_window(dlg, parent)
 
     def _confirm_purge(self) -> None:
         remove_program = validated_self_delete_dir() is not None
@@ -4156,6 +4245,17 @@ class UsagePet:
             self._draw_clock_button(c, tog_x0, by0, tog_x1, by1, view["toggle_label"], "tmr_toggle", ui, primary=True)
             self._draw_clock_button(c, reset_x0, by0, reset_x1, by1, view["reset_label"], "tmr_reset", ui, primary=False)
 
+    def _ui_fonts(self):
+        ui = style()
+        key = (tuple(ui["font"]), tuple(ui["font_title"]))
+        cached = getattr(self, "_tk_font_cache", None)
+        if cached is not None and cached[0] == key:
+            return cached[1], cached[2]
+        body = tkfont.Font(font=ui["font"])
+        title = tkfont.Font(font=ui["font_title"])
+        self._tk_font_cache = (key, body, title)
+        return body, title
+
     def _draw_bubble(self) -> None:
         self._panel_hits = []
         panel = self.active_panel()
@@ -4211,8 +4311,7 @@ class UsagePet:
         pad = 16
         title_x = x0 + pad
         pct_right = x1 - pad
-        title_font = tkfont.Font(font=ui["font"])
-        pct_font = tkfont.Font(font=ui["font_title"])
+        title_font, pct_font = self._ui_fonts()
         max_title = max((title_font.measure(pools[key]["title"]) for key in rows), default=0)
         max_pct = max((pct_font.measure(format_pool_pct(pools[key])) for key in rows), default=0)
         max_pct = max(max_pct, pct_font.measure("100%  100%"))
@@ -4342,8 +4441,7 @@ class UsagePet:
         pad_x, pad_y = 10, 8
         width = max(160, min(240, self._win_w - 16))
         inner = width - 2 * pad_x
-        font_b = tkfont.Font(font=ui["font_title"])
-        font_n = tkfont.Font(font=ui["font"])
+        font_n, font_b = self._ui_fonts()
         line_h = max(font_n.metrics("linespace"), 16)
         chunks: list[tuple[str, bool] | None] = []
         height = pad_y * 2
