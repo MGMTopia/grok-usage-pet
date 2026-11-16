@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import os
 import sys
@@ -214,6 +215,69 @@ class SnapshotContractTests(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertEqual(result["source_status"], fu.SOURCE_ERROR)
         self.assertTrue(result["errors"])
+
+
+class CursorStoredTokenTests(unittest.TestCase):
+    def test_plaintext_cursor_token_is_not_decrypted(self) -> None:
+        db = Path("C:/unused/Cursor/User/globalStorage/state.vscdb")
+        with mock.patch.object(fu, "_cursor_os_crypt_key") as key_reader:
+            revealed = fu.reveal_cursor_stored_token("legacy-session-token", db)
+        self.assertEqual(revealed, "legacy-session-token")
+        key_reader.assert_not_called()
+
+    def test_safe_storage_blob_is_decrypted_with_local_state_key(self) -> None:
+        db = Path("C:/unused/Cursor/User/globalStorage/state.vscdb")
+        nonce = b"n" * 12
+        cipher = b"c" * 20
+        stored = fu.CURSOR_SAFE_STORAGE_PREFIX + base64.b64encode(
+            b"v10" + nonce + cipher
+        ).decode("ascii")
+        with (
+            mock.patch.object(fu.os, "name", "nt"),
+            mock.patch.object(fu, "_cursor_os_crypt_key", return_value=b"k" * 32) as key_reader,
+            mock.patch.object(fu, "_windows_aes_gcm_decrypt", return_value=b"usable-token") as decrypt,
+        ):
+            revealed = fu.reveal_cursor_stored_token(stored, db)
+        self.assertEqual(revealed, "usable-token")
+        key_reader.assert_called_once_with(db)
+        self.assertEqual(decrypt.call_args.args[1], nonce)
+        self.assertEqual(decrypt.call_args.args[2], cipher)
+
+    def test_decrypt_failure_hides_stored_secret(self) -> None:
+        db = Path("C:/unused/Cursor/User/globalStorage/state.vscdb")
+        secret = "cursor-safe-storage-secret-value"
+        stored = fu.CURSOR_SAFE_STORAGE_PREFIX + base64.b64encode(
+            b"v10" + (b"n" * 12) + (b"c" * 20)
+        ).decode("ascii")
+        with (
+            mock.patch.object(fu.os, "name", "nt"),
+            mock.patch.object(fu, "_cursor_os_crypt_key", return_value=b"k" * 32),
+            mock.patch.object(fu, "_windows_aes_gcm_decrypt", side_effect=OSError(secret)),
+        ):
+            with self.assertRaises(RuntimeError) as caught:
+                fu.reveal_cursor_stored_token(stored, db)
+        message = str(caught.exception)
+        self.assertNotIn(secret, message)
+        self.assertNotIn(stored, message)
+        self.assertIn("无法解密", message)
+
+    def test_unknown_encryption_does_not_read_the_key_or_call_rpc(self) -> None:
+        db = Path("C:/unused/Cursor/User/globalStorage/state.vscdb")
+        stored = fu.CURSOR_SAFE_STORAGE_PREFIX + base64.b64encode(b"v20" + (b"x" * 40)).decode("ascii")
+        with mock.patch.object(fu.os, "name", "nt"), mock.patch.object(fu, "_cursor_os_crypt_key") as key_reader:
+            with self.assertRaises(RuntimeError) as caught:
+                fu.reveal_cursor_stored_token(stored, db)
+        key_reader.assert_not_called()
+        self.assertIn("无法识别", str(caught.exception))
+
+        with (
+            mock.patch.object(fu, "load_cursor_token", side_effect=RuntimeError("Cursor 登录使用了无法识别的加密格式")),
+            mock.patch.object(fu, "cursor_rpc") as rpc,
+        ):
+            result = fu.fetch_cursor()
+        rpc.assert_not_called()
+        self.assertEqual(result["source_status"], fu.SOURCE_ERROR)
+        self.assertIn("无法识别", result["errors"]["cursor"])
 
 
 class CodexContractTests(unittest.TestCase):

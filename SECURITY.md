@@ -14,8 +14,12 @@ The app does not require a separate account. It uses existing local sessions:
 - Reads the first Grok account from `GROK_HOME/auth.json`, or
   `%USERPROFILE%\.grok\auth.json` by default.
 - Opens Cursor's `state.vscdb` in read-only SQLite mode to obtain the local
-  access token and account metadata.
-- Never writes to Cursor's database.
+  access token and account metadata. When that token is stored with the
+  `cursor-safe-storage:v1:` prefix, the app also reads Cursor's `Local State`
+  `os_crypt.encrypted_key`, unwraps it with the current user's DPAPI on
+  Windows, and decrypts the token in memory. The decrypted token is not
+  written to the snapshot or back to Cursor's files.
+- Never writes to Cursor's database or `Local State`.
 - Reads ChatGPT-login Codex credentials from `%USERPROFILE%\.codex\auth.json`
   (or `CODEX_HOME`). It never copies that file into a release and never stores
   `access_token`, `refresh_token`, or `account_id` in usage snapshots.
