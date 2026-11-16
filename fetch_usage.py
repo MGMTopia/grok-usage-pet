@@ -4,6 +4,7 @@
 Reads (leave these where the apps put them):
   ~/.grok/auth.json                                  SuperGrok / Grok Build login
   %APPDATA%/Cursor/User/globalStorage/state.vscdb    Cursor login (Grok Bot)
+  %APPDATA%/Cursor/Local State                       Cursor at-rest token key (Windows)
   ~/.codex/auth.json                                 Codex / ChatGPT login
 
 Writes snapshots to the OS app-data folder (%%LOCALAPPDATA%%/GrokUsagePet on
@@ -54,6 +55,9 @@ APP_NAME = "GrokUsagePet"
 BILLING_URL = "https://cli-chat-proxy.grok.com/v1/billing?format=credits"
 SETTINGS_URL = "https://cli-chat-proxy.grok.com/v1/settings"
 CURSOR_RPC = "https://api2.cursor.sh/aiserver.v1.DashboardService"
+CURSOR_SAFE_STORAGE_PREFIX = "cursor-safe-storage:v1:"
+_CURSOR_KEY_PREFIX = b"DPAPI"
+_CURSOR_AES_PREFIX = b"v10"
 CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage"
 CODEX_TOKEN_URL = "https://auth.openai.com/oauth/token"
 GROK_OIDC_ISSUER = "https://auth.x.ai"
@@ -390,6 +394,175 @@ def load_token(*, force_refresh: bool = False, _allow_revision_retry: bool = Tru
     return token, entry
 
 
+def _cursor_local_state_path(db: Path) -> Path:
+    # state.vscdb -> globalStorage -> User -> <Cursor app data>
+    return db.parents[2] / "Local State"
+
+
+def _windows_dpapi_unprotect(data: bytes) -> bytes:
+    import ctypes
+    from ctypes import wintypes
+
+    class DATA_BLOB(ctypes.Structure):
+        _fields_ = [("cbData", wintypes.DWORD), ("pbData", ctypes.POINTER(ctypes.c_char))]
+
+    crypt32 = ctypes.WinDLL("crypt32", use_last_error=True)
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    crypt32.CryptUnprotectData.argtypes = [
+        ctypes.POINTER(DATA_BLOB),
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        wintypes.DWORD,
+        ctypes.POINTER(DATA_BLOB),
+    ]
+    crypt32.CryptUnprotectData.restype = wintypes.BOOL
+    in_buf = ctypes.create_string_buffer(data)
+    blob_in = DATA_BLOB(len(data), ctypes.cast(in_buf, ctypes.POINTER(ctypes.c_char)))
+    blob_out = DATA_BLOB()
+    ok = crypt32.CryptUnprotectData(
+        ctypes.byref(blob_in), None, None, None, None, 0, ctypes.byref(blob_out)
+    )
+    if not ok:
+        raise OSError(ctypes.get_last_error(), "CryptUnprotectData failed")
+    try:
+        return ctypes.string_at(blob_out.pbData, blob_out.cbData)
+    finally:
+        kernel32.LocalFree(blob_out.pbData)
+
+
+def _windows_aes_gcm_decrypt(key: bytes, nonce: bytes, cipher_and_tag: bytes) -> bytes:
+    import ctypes
+    from ctypes import wintypes
+
+    if len(cipher_and_tag) < 16:
+        raise OSError("AES-GCM payload is truncated")
+
+    class AUTH_INFO(ctypes.Structure):
+        _fields_ = [
+            ("cbSize", wintypes.ULONG),
+            ("dwInfoVersion", wintypes.ULONG),
+            ("pbNonce", ctypes.POINTER(ctypes.c_ubyte)),
+            ("cbNonce", wintypes.ULONG),
+            ("pbAuthData", ctypes.POINTER(ctypes.c_ubyte)),
+            ("cbAuthData", wintypes.ULONG),
+            ("pbTag", ctypes.POINTER(ctypes.c_ubyte)),
+            ("cbTag", wintypes.ULONG),
+            ("pbMacContext", ctypes.POINTER(ctypes.c_ubyte)),
+            ("cbMacContext", wintypes.ULONG),
+            ("cbAAD", wintypes.ULONG),
+            ("cbData", ctypes.c_ulonglong),
+            ("dwFlags", wintypes.ULONG),
+        ]
+
+    data = cipher_and_tag[:-16]
+    tag = cipher_and_tag[-16:]
+    bcrypt = ctypes.WinDLL("bcrypt", use_last_error=True)
+    alg = ctypes.c_void_p()
+    status = bcrypt.BCryptOpenAlgorithmProvider(
+        ctypes.byref(alg), "AES", "Microsoft Primitive Provider", 0
+    )
+    if status != 0:
+        raise OSError(f"BCryptOpenAlgorithmProvider {status:#x}")
+    try:
+        mode = ctypes.create_unicode_buffer("ChainingModeGCM")
+        status = bcrypt.BCryptSetProperty(alg, "ChainingMode", mode, ctypes.sizeof(mode), 0)
+        if status != 0:
+            raise OSError(f"BCryptSetProperty {status:#x}")
+        key_handle = ctypes.c_void_p()
+        key_buf = ctypes.create_string_buffer(key)
+        status = bcrypt.BCryptGenerateSymmetricKey(
+            alg, ctypes.byref(key_handle), None, 0, key_buf, len(key), 0
+        )
+        if status != 0:
+            raise OSError(f"BCryptGenerateSymmetricKey {status:#x}")
+        try:
+            nonce_buf = (ctypes.c_ubyte * len(nonce)).from_buffer_copy(nonce)
+            tag_buf = (ctypes.c_ubyte * len(tag)).from_buffer_copy(tag)
+            info = AUTH_INFO()
+            info.cbSize = ctypes.sizeof(AUTH_INFO)
+            info.dwInfoVersion = 1
+            info.pbNonce = ctypes.cast(nonce_buf, ctypes.POINTER(ctypes.c_ubyte))
+            info.cbNonce = len(nonce)
+            info.pbTag = ctypes.cast(tag_buf, ctypes.POINTER(ctypes.c_ubyte))
+            info.cbTag = len(tag)
+            in_buf = ctypes.create_string_buffer(data)
+            out_buf = ctypes.create_string_buffer(len(data))
+            written = wintypes.ULONG(0)
+            status = bcrypt.BCryptDecrypt(
+                key_handle,
+                in_buf,
+                len(data),
+                ctypes.byref(info),
+                None,
+                0,
+                out_buf,
+                len(data),
+                ctypes.byref(written),
+                0,
+            )
+            if status != 0:
+                raise OSError(f"BCryptDecrypt {status:#x}")
+            return out_buf.raw[: written.value]
+        finally:
+            bcrypt.BCryptDestroyKey(key_handle)
+    finally:
+        bcrypt.BCryptCloseAlgorithmProvider(alg, 0)
+
+
+def _cursor_os_crypt_key(db: Path) -> bytes:
+    path = _cursor_local_state_path(db)
+    if not path.is_file():
+        raise RuntimeError("找不到 Cursor 的本机加密密钥，请先打开 Cursor 并登录")
+    try:
+        state = json.loads(path.read_text(encoding="utf-8"))
+        encoded = state["os_crypt"]["encrypted_key"]
+        if not isinstance(encoded, str):
+            raise TypeError("encrypted_key")
+        raw = base64.b64decode(encoded)
+    except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+        raise RuntimeError("Cursor 本机加密密钥无法读取") from exc
+    if raw.startswith(_CURSOR_KEY_PREFIX):
+        raw = raw[len(_CURSOR_KEY_PREFIX) :]
+    try:
+        return _windows_dpapi_unprotect(raw)
+    except OSError as exc:
+        raise RuntimeError("Cursor 本机加密密钥无法解密") from exc
+
+
+def reveal_cursor_stored_token(stored: str, db: Path) -> str:
+    """Return a usable Cursor access token.
+
+    Current Cursor builds store accessToken with a cursor-safe-storage prefix.
+    The bytes after that prefix are Chromium OSCrypt (v10 AES-GCM). The AES key
+    lives in Local State and is wrapped with the current user's DPAPI. Older
+    plaintext tokens are returned unchanged.
+    """
+    if not stored.startswith(CURSOR_SAFE_STORAGE_PREFIX):
+        return stored
+    if os.name != "nt":
+        raise RuntimeError("Cursor 登录已在本机加密，当前系统还不能解密")
+    try:
+        blob = base64.b64decode(stored[len(CURSOR_SAFE_STORAGE_PREFIX) :], validate=True)
+    except (ValueError, TypeError) as exc:
+        raise RuntimeError("Cursor 登录加密数据已损坏") from exc
+    if not blob.startswith(_CURSOR_AES_PREFIX) or len(blob) < 3 + 12 + 16:
+        raise RuntimeError("Cursor 登录使用了无法识别的加密格式")
+    key = _cursor_os_crypt_key(db)
+    try:
+        plain = _windows_aes_gcm_decrypt(key, blob[3:15], blob[15:])
+    except OSError as exc:
+        raise RuntimeError("Cursor 登录无法解密，请保持 Cursor 已登录后重试") from exc
+    try:
+        text = plain.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise RuntimeError("Cursor 登录解密结果无效") from exc
+    if not text:
+        raise RuntimeError("Cursor 登录解密结果为空")
+    return text
+
+
 def cursor_rpc(token: str, method: str, body: dict | None = None) -> dict:
     req = urllib.request.Request(
         f"{CURSOR_RPC}/{method}",
@@ -424,6 +597,7 @@ def load_cursor_token() -> dict | None:
         token = get("cursorAuth/accessToken")
         if not token:
             return None
+        token = reveal_cursor_stored_token(token, db)
         return {
             "token": token,
             "email": get("cursorAuth/cachedEmail"),
@@ -434,8 +608,43 @@ def load_cursor_token() -> dict | None:
         con.close()
 
 
+def _empty_cursor_result(message: str, plan: str | None = None) -> dict:
+    return {
+        "source_status": SOURCE_ERROR,
+        "cursor_plan": bounded_service_text(plan, limit=120),
+        "grok_bot": {
+            "used_percent": None,
+            "remaining_percent": None,
+            "resets_at": None,
+        },
+        "cursor_monthly": {
+            "billing_cycle_end": None,
+            "included_limit_cents": None,
+            "included_used_cents": None,
+            "display_message": None,
+            "on_demand_allowed": True,
+            "cursor_models": {
+                "hint": "Composer / Cursor Grok 等自有模型",
+                "used_percent": None,
+                "remaining_percent": None,
+                "display_message": None,
+            },
+            "other_models": {
+                "hint": "GPT / Claude 等第三方模型",
+                "used_percent": None,
+                "remaining_percent": None,
+                "display_message": None,
+            },
+        },
+        "errors": {"cursor": message},
+    }
+
+
 def fetch_cursor() -> dict | None:
-    creds = load_cursor_token()
+    try:
+        creds = load_cursor_token()
+    except RuntimeError as exc:
+        return _empty_cursor_result(str(exc))
     if not creds:
         return None
     token = creds["token"]

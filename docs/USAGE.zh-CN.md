@@ -6,7 +6,7 @@ Grok Bot、Cursor 和 Codex 的额度与重置时间。它不是 xAI、Cursor �
 
 ## 安装
 
-1. 从 GitHub Releases 下载当前 Windows x64 ZIP（`GrokUsagePet-v0.3.17-Windows-x64.zip`）。
+1. 从 GitHub Releases 下载当前 Windows x64 ZIP（`GrokUsagePet-v0.3.18-Windows-x64.zip`）。
 2. 解压整个文件夹，不要只复制 EXE。
 3. 至少登录一个数据来源：
    - SuperGrok：通过 Grok CLI 完成登录；
@@ -43,7 +43,7 @@ Grok Bot、Cursor 和 Codex 的额度与重置时间。它不是 xAI、Cursor �
 程序使用已有本地登录，不需要单独注册账号：
 
 - 读取 Grok 的 `auth.json`；过期时可能通过 OIDC 刷新并原子写回 token；
-- 以只读方式打开 Cursor 的 `state.vscdb`；
+- 以只读方式打开 Cursor 的 `state.vscdb`；若登录令牌已加密，在 Windows 上用本机 `Local State` 密钥解密后再请求额度；
 - 只访问配置的 Grok OIDC issuer、`cli-chat-proxy.grok.com`、
   `api2.cursor.sh`、ChatGPT 登录 Codex 时的 OpenAI 额度接口，以及
   （若打开更新检查）本仓库的 GitHub Releases API 与官方 zip / SHA256；

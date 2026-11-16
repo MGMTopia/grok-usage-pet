@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.3.18 — 2026-11-16
+
+Read Cursor quota again after Cursor encrypts the local access token. Git tag: `v0.3.18`.
+
+- Decrypt `cursor-safe-storage:v1:` access tokens on Windows before calling the
+  usage RPCs. Current Cursor builds encrypt `cursorAuth/accessToken` at rest,
+  so sending the database value as a Bearer token returns 401.
+
 ## 0.3.17 — 2026-09-16
 
 Stop Settings → Check now from freezing the pet. Git tag: `v0.3.17`.
